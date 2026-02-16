@@ -5,6 +5,7 @@ import 'package:table_calendar/table_calendar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'theme.dart';
 import 'main_layout.dart'; // Ensure this exists for the final transition
+import 'services/api_service.dart'; // Ensure this exists for the API call
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -18,6 +19,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   int _currentStep = 0;
   // NEW PROFILE STATES
   // UNIT TOGGLES
+  bool _isSigningIn = false; // New variable to track which view to show
   bool _isMetricHeight = true; // true = CM, false = FT/IN
   bool _isMetricWeight = true; // true = KG, false = LBS
 
@@ -25,6 +27,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final TextEditingController _feetController = TextEditingController();
   final TextEditingController _inchesController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _heightController = TextEditingController();
   final TextEditingController _weightController = TextEditingController();
   String? _selectedAgeRange;
@@ -44,49 +47,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     return day.isAfter(today);
   }
 
-  Future<void> _saveOnboardingData() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('user_name', _nameController.text);
-    await prefs.setString('user_age_range', _selectedAgeRange ?? "");
-    await prefs.setString('user_height', _heightController.text);
-    // Save Unit Preferences
-    await prefs.setBool('height_is_metric', _isMetricHeight);
-    await prefs.setBool('weight_is_metric', _isMetricWeight);
-
-    // Save Height
-    if (_isMetricHeight) {
-      await prefs.setString('user_height', _heightController.text);
-    } else {
-      await prefs.setString(
-        'user_height',
-        "${_feetController.text}'${_inchesController.text}\"",
-      );
-    }
-
-    // Save Weight
-    await prefs.setString('user_weight', _weightController.text);
-    // Save Profile & Goals
-    if (_selectedCondition != null) {
-      await prefs.setString('user_condition', _selectedCondition!);
-    }
-    await prefs.setStringList('user_goals', _selectedGoals);
-    await prefs.setBool('is_cycle_irregular', _isIrregular);
-
-    // Save Initial Period Dates
-    if (_rangeStart != null) {
-      await prefs.setString(
-        'last_period_start',
-        _rangeStart!.toIso8601String(),
-      );
-    }
-    if (_rangeEnd != null) {
-      await prefs.setString('last_period_end', _rangeEnd!.toIso8601String());
-    }
-
-    // Mark onboarding complete
-    await prefs.setBool('has_completed_setup', true);
-  }
-
   void _nextPage() async {
     if (_currentStep < 4) {
       _pageController.nextPage(
@@ -94,18 +54,108 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         curve: Curves.easeInOut,
       );
     } else {
-      // Save data before transitioning
-      await _saveOnboardingData();
+      // Final step → Call Backend
 
-      if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const MainLayout()),
-      );
+      try {
+        double? height;
+        double? weight;
+
+        // Height conversion
+        if (_isMetricHeight) {
+          height = double.tryParse(_heightController.text);
+        } else {
+          final ft = double.tryParse(_feetController.text) ?? 0;
+          final inch = double.tryParse(_inchesController.text) ?? 0;
+          height = ((ft * 12) + inch) * 2.54; // convert to cm
+        }
+
+        // Weight (still simple for now)
+        if (_weightController.text.isNotEmpty) {
+          weight = double.tryParse(_weightController.text);
+        }
+
+        final result = await ApiService.createProfile(
+          email: _emailController.text.trim(),
+          name: _nameController.text.trim(),
+          ageRange: _selectedAgeRange!,
+          condition: _mapConditionToBackend(_selectedCondition!),
+          goals: _mapGoalsToBackend(),
+          height: height,
+          weight: weight,
+        );
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_id', result['user_id']);
+        final userId = result['user_id'];
+
+        // Create initial cycle logs first
+        if (_rangeStart != null && _rangeEnd != null) {
+          DateTime current = _rangeStart!;
+
+          while (!current.isAfter(_rangeEnd!)) {
+            await ApiService.createLog(
+              userId: userId,
+              logDate: current,
+              isPeriodActive: true,
+              flowEncoded: null,
+              selectedSymptoms: [],
+              extraSymptoms: "",
+              note: "",
+            );
+
+            current = current.add(const Duration(days: 1));
+          }
+        }
+
+        if (!mounted) return;
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const MainLayout()),
+        );
+      } catch (e) {
+        debugPrint("Profile creation failed: $e");
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Something went wrong")));
+      }
     }
   }
 
-  @override
+  String _mapConditionToBackend(String uiValue) {
+    switch (uiValue) {
+      case "PCOS":
+        return "pcos";
+      case "Endometriosis":
+        return "endometriosis";
+      case "PMDD":
+        return "pmdd";
+      case "Perimenopause":
+        return "perimenopause";
+      default:
+        return "regular";
+    }
+  }
+
+  List<String> _mapGoalsToBackend() {
+    return _selectedGoals.map((goal) {
+      switch (goal) {
+        case "Manage Fatigue":
+          return "manage_fatigue";
+        case "Reduce Inflammation":
+          return "reduce_inflammation";
+        case "Stabilize Mood":
+          return "stabilize_mood";
+        case "Improve Fertility":
+          return "improve_fertility";
+        case "Regularize Cycle":
+          return "regularize_cycle";
+        default:
+          return goal.toLowerCase().replaceAll(" ", "_");
+      }
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -126,10 +176,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         physics: const NeverScrollableScrollPhysics(),
                         onPageChanged: (index) =>
                             setState(() => _currentStep = index),
+                        // Look for your PageView children and change the first line:
                         children: [
-                          _stepWrapper(_buildConsentStep()),
-                          _stepWrapper(_buildHealthProfileStep()),
+                          _isSigningIn
+                              ? _stepWrapper(_buildSignInStep())
+                              : _stepWrapper(_buildConsentStep()),
                           _stepWrapper(_buildPersonalProfileStep()),
+                          _stepWrapper(_buildHealthProfileStep()),
                           _stepWrapper(_buildGoalsStep()),
                           _stepWrapper(_buildCalendarStep()),
                         ],
@@ -208,12 +261,125 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           "Your health profile and logs never leave your phone unless you choose to back them up.",
         ),
         const SizedBox(height: 60),
+
+        // Primary "Get Started" Button
         _primaryButton(
           "I Consent & Understand",
           _nextPage,
           icon: Icons.arrow_forward,
         ),
+
+        const SizedBox(height: 16),
+
+        // NEW: Secondary "Sign In" Button
+        SizedBox(
+          width: double.infinity,
+          height: 65,
+          child: OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Colors.black12),
+              shape: const StadiumBorder(),
+            ),
+            onPressed: () => setState(() => _isSigningIn = true),
+            child: Text(
+              "SIGN IN WITH EMAIL",
+              style: GoogleFonts.quicksand(
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+                color: HerLunaTheme.primaryPlum,
+              ),
+            ),
+          ),
+        ),
         const SizedBox(height: 40),
+      ],
+    );
+  }
+
+  Widget _buildSignInStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 20),
+        TextButton.icon(
+          onPressed: () => setState(() => _isSigningIn = false),
+          icon: const Icon(Icons.arrow_back, size: 16),
+          label: const Text("BACK"),
+          style: TextButton.styleFrom(foregroundColor: Colors.black45),
+        ),
+        const SizedBox(height: 40),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: HerLunaTheme.primaryPlum.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: const Icon(LucideIcons.mail, color: HerLunaTheme.primaryPlum),
+        ),
+        const SizedBox(height: 32),
+        Text(
+          "Welcome back.",
+          style: GoogleFonts.quicksand(
+            fontSize: 38,
+            fontWeight: FontWeight.bold,
+            color: HerLunaTheme.primaryPlum,
+          ),
+        ),
+        const Text(
+          "Sign in to restore your patterns.",
+          style: TextStyle(fontStyle: FontStyle.italic, color: Colors.black54),
+        ),
+        const SizedBox(height: 40),
+        _inputLabel("EMAIL ADDRESS"),
+        _customTextField(_emailController, "hello@example.com", isEmail: true),
+        const SizedBox(height: 40),
+        _primaryButton(
+          "Continue with Email",
+          _emailController.text.contains('@')
+              ? () async {
+                  try {
+                    final result = await ApiService.loginWithEmail(
+                      _emailController.text.trim(),
+                    );
+
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setString("user_id", result["user_id"]);
+
+                    if (!mounted) return;
+
+                    if (result["is_new"] == true) {
+                      setState(() {
+                        _isSigningIn = false;
+                      });
+
+                      _pageController.animateToPage(
+                        1, // move to Personal Profile step
+                        duration: const Duration(milliseconds: 400),
+                        curve: Curves.easeInOut,
+                      );
+                    } else {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(builder: (_) => const MainLayout()),
+                      );
+                    }
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Login failed")),
+                    );
+                  }
+                }
+              : null,
+          icon: Icons.arrow_forward,
+        ),
+
+        const SizedBox(height: 24),
+        const Center(
+          child: Text(
+            "We'll send a secure magic link to your inbox.",
+            style: TextStyle(fontSize: 12, color: Colors.black38),
+          ),
+        ),
       ],
     );
   }
@@ -244,6 +410,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
         ),
         _customTextField(_nameController, "Your name"),
+        const SizedBox(height: 30),
+
+        // ADD THIS BLOCK HERE
+        const Text(
+          "EMAIL ADDRESS",
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            color: Colors.black45,
+            letterSpacing: 1.2,
+          ),
+        ),
+        _customTextField(_emailController, "hello@example.com", isEmail: true),
 
         const SizedBox(height: 30),
 
@@ -371,7 +550,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         const SizedBox(height: 60),
         _primaryButton(
           "Continue Profile",
-          (_nameController.text.isNotEmpty && _selectedAgeRange != null)
+          (_nameController.text.isNotEmpty &&
+                  _emailController.text.contains('@') && // Added email check
+                  _selectedAgeRange != null)
               ? _nextPage
               : null,
         ),
@@ -395,7 +576,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   // Updated text field to support the "Value" hints and unit suffixes
-  Widget _customTextField(TextEditingController controller, String hint) {
+  Widget _customTextField(
+    TextEditingController controller,
+    String hint, {
+    bool isEmail = false,
+  }) {
     return Container(
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -406,7 +591,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       ),
       child: TextField(
         controller: controller,
-        keyboardType: TextInputType.name,
+        // If isEmail is true, show email keyboard; otherwise show standard text keyboard
+        keyboardType: isEmail ? TextInputType.emailAddress : TextInputType.text,
         onChanged: (_) => setState(() {}),
         decoration: InputDecoration(
           hintText: hint,
