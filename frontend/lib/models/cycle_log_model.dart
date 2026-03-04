@@ -1,12 +1,12 @@
 /// HerLuna Cycle Log Model
-class CycleLog {
+class CycleLogModel {
   final int? id;
   final int userId;
   final DateTime periodStart;
   final int? cycleLength;
   final DateTime? createdAt;
 
-  CycleLog({
+  CycleLogModel({
     this.id,
     required this.userId,
     required this.periodStart,
@@ -14,8 +14,8 @@ class CycleLog {
     this.createdAt,
   });
 
-  factory CycleLog.fromJson(Map<String, dynamic> json) {
-    return CycleLog(
+  factory CycleLogModel.fromJson(Map<String, dynamic> json) {
+    return CycleLogModel(
       id: json['id'],
       userId: json['user_id'],
       periodStart: DateTime.parse(json['period_start']),

@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
+import '../core/colors.dart';
+import '../core/spacing.dart';
+import '../services/api_service.dart';
+import '../services/storage_service.dart';
+import '../models/cycle_log_model.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -9,313 +13,174 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
-  DateTime _focusedMonth = DateTime.now();
-  DateTime? _selectedDay;
-  bool _showLogSheet = false;
+  List<CycleLogModel> _cycleLogs = [];
+  Set<int> _periodDays = {};
 
-  // Mock logging state
-  bool _isPeriod = false;
-  double _flowLevel = 1;
-  double _energyLevel = 3;
-  double _stressLevel = 2;
+  @override
+  void initState() {
+    super.initState();
+    _loadCycleLogs();
+  }
+
+  Future<void> _loadCycleLogs() async {
+    try {
+      final userId = await StorageService.getUserId();
+      if (userId != null) {
+        _cycleLogs = await ApiService().getCycleLogs(userId);
+        // Highlight period days for October (mock month shown)
+        for (final log in _cycleLogs) {
+          for (int d = 0; d < 5; d++) {
+            _periodDays.add(log.periodStart.day + d);
+          }
+        }
+        if (mounted) setState(() {});
+      }
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: HerLunaTheme.background,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => setState(() => _showLogSheet = true),
-        backgroundColor: HerLunaTheme.primary,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('Log Day', style: TextStyle(color: Colors.white)),
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: const Text(
+          "Calendar",
+          style: TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.bold),
+        ),
+        centerTitle: true,
       ),
-      body: SafeArea(
+      body: SingleChildScrollView(
+        padding: AppSpacing.screenPadding,
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Header ───────────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
-              child: Row(
+            // Month Selector
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "October 2023",
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: AppColors.primaryDark),
+                ),
+                Row(
+                  children: [
+                    IconButton(onPressed: () {}, icon: const Icon(Icons.chevron_left)),
+                    IconButton(onPressed: () {}, icon: const Icon(Icons.chevron_right)),
+                  ],
+                ),
+              ],
+            ),
+            
+            AppSpacing.verticalMedium,
+
+            // Weekday Labels
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+                  .map((day) => Text(day, style: const TextStyle(color: AppColors.primaryMuted, fontWeight: FontWeight.bold)))
+                  .toList(),
+            ),
+            
+            AppSpacing.verticalSmall,
+
+            // Calendar Grid Placeholder
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: 31,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 7,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+              ),
+              itemBuilder: (context, index) {
+                int day = index + 1;
+                // Use real period data if available, fallback to mock
+                bool isPhaseDay = _periodDays.isNotEmpty
+                    ? _periodDays.contains(day)
+                    : (day >= 10 && day <= 14);
+                bool isSelected = day == 12;
+
+                return Container(
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: isSelected 
+                        ? AppColors.primaryDark 
+                        : (isPhaseDay ? AppColors.lavender.withOpacity(0.5) : Colors.transparent),
+                    shape: BoxShape.circle,
+                    border: isPhaseDay && !isSelected 
+                        ? Border.all(color: AppColors.lavender) 
+                        : null,
+                  ),
+                  child: Text(
+                    "$day",
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : AppColors.primaryDark,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                );
+              },
+            ),
+
+            AppSpacing.verticalLarge,
+
+            // Legend/Summary Section
+            const Text(
+              "Legend",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primaryDark),
+            ),
+            AppSpacing.verticalSmall,
+            _buildLegendItem(AppColors.lavender, "Ovulation Window"),
+            _buildLegendItem(AppColors.primaryDark, "Selected Day"),
+            _buildLegendItem(AppColors.accentMint, "Predicted Period"),
+
+            AppSpacing.verticalLarge,
+
+            // Daily Detail Card
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  )
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Expanded(
-                    child: Text('Calendar', style: HerLunaTheme.heading2),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_left,
-                        color: HerLunaTheme.textSecondary),
-                    onPressed: () => setState(() {
-                      _focusedMonth = DateTime(
-                          _focusedMonth.year, _focusedMonth.month - 1);
-                    }),
-                  ),
-                  Text(
-                    _monthName(_focusedMonth),
-                    style: HerLunaTheme.heading3.copyWith(fontSize: 15),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_right,
-                        color: HerLunaTheme.textSecondary),
-                    onPressed: () => setState(() {
-                      _focusedMonth = DateTime(
-                          _focusedMonth.year, _focusedMonth.month + 1);
-                    }),
+                  const Text("October 12th Insights", style: TextStyle(fontWeight: FontWeight.bold)),
+                  AppSpacing.verticalSmall,
+                  const Text(
+                    "High energy levels today. Your AI suggests focusing on physical activity.",
+                    style: TextStyle(color: AppColors.primaryMuted, fontSize: 14),
                   ),
                 ],
               ),
             ),
-
-            // ── Calendar Grid ────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _buildCalendarGrid(),
-            ),
-
-            const SizedBox(height: 16),
-
-            // ── Selected Day Summary ─────────────────────────────────
-            if (_selectedDay != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: _buildDaySummary(),
-              ),
-
-            // ── Log Bottom Sheet ─────────────────────────────────────
-            if (_showLogSheet) ...[
-              const Spacer(),
-              _buildLogSheet(),
-            ],
           ],
         ),
       ),
     );
   }
 
-  Widget _buildCalendarGrid() {
-    final daysInMonth =
-        DateTime(_focusedMonth.year, _focusedMonth.month + 1, 0).day;
-    final firstWeekday =
-        DateTime(_focusedMonth.year, _focusedMonth.month, 1).weekday;
-    final today = DateTime.now();
-
-    return Column(
-      children: [
-        // Day names
-        Row(
-          children: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-              .map((d) => Expanded(
-                    child: Center(
-                      child: Text(d,
-                          style: HerLunaTheme.bodySmall
-                              .copyWith(fontWeight: FontWeight.w500)),
-                    ),
-                  ))
-              .toList(),
-        ),
-        const SizedBox(height: 8),
-        // Days grid
-        ...List.generate(6, (week) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Row(
-              children: List.generate(7, (day) {
-                final dayNum =
-                    week * 7 + day + 1 - (firstWeekday == 7 ? 0 : firstWeekday);
-                if (dayNum < 1 || dayNum > daysInMonth) {
-                  return const Expanded(child: SizedBox(height: 42));
-                }
-
-                final date = DateTime(
-                    _focusedMonth.year, _focusedMonth.month, dayNum);
-                final isToday = date.day == today.day &&
-                    date.month == today.month &&
-                    date.year == today.year;
-                final isSelected = _selectedDay != null &&
-                    date.day == _selectedDay!.day &&
-                    date.month == _selectedDay!.month;
-
-                return Expanded(
-                  child: GestureDetector(
-                    onTap: () => setState(() => _selectedDay = date),
-                    child: Container(
-                      height: 42,
-                      margin: const EdgeInsets.all(2),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? HerLunaTheme.primary
-                            : isToday
-                                ? HerLunaTheme.accentLight
-                                : null,
-                        borderRadius: BorderRadius.circular(12),
-                        border: isToday && !isSelected
-                            ? Border.all(
-                                color: HerLunaTheme.primary.withOpacity(0.4))
-                            : null,
-                      ),
-                      child: Center(
-                        child: Text(
-                          '$dayNum',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight:
-                                isToday ? FontWeight.w600 : FontWeight.w400,
-                            color: isSelected
-                                ? Colors.white
-                                : HerLunaTheme.textPrimary,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }),
-            ),
-          );
-        }),
-      ],
-    );
-  }
-
-  Widget _buildDaySummary() {
-    return HerLunaCard(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '${_selectedDay!.day} ${_monthName(DateTime(_selectedDay!.year, _selectedDay!.month))}',
-            style: HerLunaTheme.heading3,
-          ),
-          const SizedBox(height: 12),
-          _summaryRow('Phase', 'Follicular', Icons.nightlight_round),
-          _summaryRow('Energy', 'Moderate', Icons.bolt_outlined),
-          _summaryRow('Stress', 'Low', Icons.spa_outlined),
-        ],
-      ),
-    );
-  }
-
-  Widget _summaryRow(String label, String value, IconData icon) {
+  Widget _buildLegendItem(Color color, String label) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: HerLunaTheme.accent),
-          const SizedBox(width: 10),
-          Text(label, style: HerLunaTheme.bodyMedium),
-          const Spacer(),
-          Text(value,
-              style: HerLunaTheme.bodyLarge
-                  .copyWith(fontWeight: FontWeight.w500, fontSize: 14)),
+          CircleAvatar(radius: 6, backgroundColor: color),
+          const SizedBox(width: 12),
+          Text(label, style: const TextStyle(color: AppColors.primaryMuted, fontSize: 14)),
         ],
       ),
     );
-  }
-
-  Widget _buildLogSheet() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-      decoration: BoxDecoration(
-        color: HerLunaTheme.cardColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 20,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Handle
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: HerLunaTheme.divider,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text('Log Today', style: HerLunaTheme.heading3),
-          const SizedBox(height: 20),
-          // Period toggle
-          Row(
-            children: [
-              Text('Period', style: HerLunaTheme.bodyLarge),
-              const Spacer(),
-              Switch(
-                value: _isPeriod,
-                onChanged: (v) => setState(() => _isPeriod = v),
-                activeColor: HerLunaTheme.primary,
-              ),
-            ],
-          ),
-          if (_isPeriod) ...[
-            const SizedBox(height: 8),
-            _sliderRow('Flow Level', _flowLevel, 1, 5, (v) {
-              setState(() => _flowLevel = v);
-            }),
-          ],
-          const SizedBox(height: 8),
-          _sliderRow('Energy', _energyLevel, 1, 5, (v) {
-            setState(() => _energyLevel = v);
-          }),
-          const SizedBox(height: 8),
-          _sliderRow('Stress', _stressLevel, 1, 5, (v) {
-            setState(() => _stressLevel = v);
-          }),
-          const SizedBox(height: 20),
-          HerLunaButton(
-            text: 'Save',
-            onPressed: () => setState(() => _showLogSheet = false),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _sliderRow(String label, double value, double min, double max,
-      ValueChanged<double> onChanged) {
-    return Row(
-      children: [
-        SizedBox(
-          width: 80,
-          child: Text(label, style: HerLunaTheme.bodyMedium),
-        ),
-        Expanded(
-          child: SliderTheme(
-            data: SliderThemeData(
-              activeTrackColor: HerLunaTheme.primary,
-              inactiveTrackColor: HerLunaTheme.accentLight,
-              thumbColor: HerLunaTheme.primary,
-              overlayColor: HerLunaTheme.primary.withOpacity(0.1),
-              trackHeight: 3,
-            ),
-            child: Slider(
-              value: value,
-              min: min,
-              max: max,
-              divisions: (max - min).round(),
-              onChanged: onChanged,
-            ),
-          ),
-        ),
-        Text(
-          value.round().toString(),
-          style: HerLunaTheme.bodyLarge
-              .copyWith(fontWeight: FontWeight.w600, fontSize: 14),
-        ),
-      ],
-    );
-  }
-
-  String _monthName(DateTime date) {
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
-    return '${months[date.month - 1]} ${date.year}';
   }
 }
