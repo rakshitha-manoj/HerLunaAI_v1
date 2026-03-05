@@ -203,6 +203,10 @@ class PhysiologicalState(BaseModel):
     """Output from Physiological + Fertility agents."""
     phase_probability: PhaseProbability = PhaseProbability()
     fertility_probability: float = Field(default=0.0, ge=0, le=1)
+    estimated_day_in_cycle: int = Field(
+        default=0, ge=0,
+        description="Estimated current day in cycle, computed from latest period_start.",
+    )
 
 
 class PerformanceState(BaseModel):

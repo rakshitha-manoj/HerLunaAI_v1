@@ -21,8 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _login() async {
     setState(() { _isLoading = true; _error = null; });
     try {
-      final api = ApiService();
-      final result = await api.login(
+      final result = await ApiService().login(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );

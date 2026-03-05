@@ -268,6 +268,23 @@ def _run_pipeline(
     raw_readiness = fatigue_result.get("readiness_score", 0)
     readiness = _safe_float(raw_readiness, 0, 100, 0.0)
 
+    # ── Step 15b: Compute estimated day in cycle ─────────────────────────
+    estimated_day = 0
+    cycle_logs = user_data.get("cycle_logs", [])
+    if cycle_logs:
+        from datetime import date as _date
+        latest_start = None
+        for log in cycle_logs:
+            ps = log.get("period_start") if isinstance(log, dict) else getattr(log, "period_start", None)
+            if ps is not None:
+                if isinstance(ps, str):
+                    ps = _date.fromisoformat(ps)
+                if latest_start is None or ps > latest_start:
+                    latest_start = ps
+        if latest_start is not None:
+            delta = (_date.today() - latest_start).days
+            estimated_day = max(1, delta + 1)  # Day 1 = period_start day
+
     # ── Step 16: Compose nested response ─────────────────────────────────
     return InferenceResponse(
         physiological_state=PhysiologicalState(
@@ -280,6 +297,7 @@ def _run_pipeline(
             fertility_probability=_safe_float(
                 fertility_result.get("fertility_probability"), 0, 1, 0.0
             ),
+            estimated_day_in_cycle=estimated_day,
         ),
         performance_state=PerformanceState(
             fatigue_probability=_safe_float(
