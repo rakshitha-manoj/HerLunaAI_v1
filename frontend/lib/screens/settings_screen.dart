@@ -1,9 +1,18 @@
 import 'package:flutter/material.dart';
-import '../core/colors.dart';
-import '../core/spacing.dart';
-import '../services/storage_service.dart';
-import '../services/api_service.dart';
-import 'splash_screen.dart';
+
+// Import your respective screen files here for the BottomNav
+import 'home_screen.dart';
+import 'calendar_screen.dart';
+import 'insights_screen.dart';
+import 'planner_screen.dart';
+
+// --- THEME CONSTANTS FOR EXACT VISUAL MATCH ---
+const Color _bgWhite = Color(0xFFF7F6F2);
+const Color _primaryDark = Color(0xFF45384D);
+const Color _primaryMuted = Color(0xFF6E5C77);
+const Color _textGray = Color(0xFF8A8290);
+const Color _lightGray = Color(0xFFE4DFE5);
+const Color _cardBg = Color(0xFFFFFFFF);
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -13,415 +22,491 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  String _displayName = 'Alex Rivera';
-  String _displayEmail = 'Pro Member · Cloud Mode';
+  // Navigation Index (Settings is index 4)
+  final int _currentIndex = 4;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadUserData();
-  }
-
-  Future<void> _loadUserData() async {
-    final email = await StorageService.getEmail();
-    final mode = await StorageService.getStorageMode();
-    if (email != null && mounted) {
-      setState(() {
-        _displayName = email.split('@').first;
-        _displayEmail = 'Member · ${mode == 'local' ? 'Local' : 'Cloud'} Mode';
-      });
-    }
-  }
-
-  Future<void> _logout() async {
-    ApiService().clearToken();
-    await StorageService.clearAll();
-    if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const SplashScreen()),
-      (_) => false,
-    );
-  }
+  // Toggle States
+  bool _periodReminders = true;
+  bool _loggingReminders = true;
+  bool _cycleInsights = true;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text(
-          "Settings",
-          style: TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.bold),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: AppSpacing.screenPadding,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1. Profile Header
-            _buildProfileHeader(),
+      backgroundColor: _bgWhite,
+      body: SafeArea(
+        child: CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  _buildHeader(),
+                  const SizedBox(height: 32),
 
-            AppSpacing.verticalLarge,
+                  _buildSectionHeader("PROFILE INFORMATION"),
+                  _buildProfileSection(),
+                  const SizedBox(height: 32),
 
-            // 2. Account Section
-            _buildSectionTitle("Account"),
-            _buildSettingsTile(Icons.person_outline, "Personal Information"),
-            _buildSettingsTile(Icons.notifications_none, "Notification Preferences"),
-            _buildSettingsTile(Icons.lock_outline, "Privacy & Data Storage"),
+                  _buildSectionHeader("DATA & PRIVACY"),
+                  _buildDataPrivacySection(),
+                  const SizedBox(height: 32),
 
-            AppSpacing.verticalMedium,
+                  _buildSectionHeader("CYCLE BASELINE"),
+                  _buildCycleBaselineSection(),
+                  const SizedBox(height: 32),
 
-            // 3. App Settings Section
-            _buildSectionTitle("App Settings"),
-            _buildSettingsTile(Icons.auto_awesome_outlined, "AI Insight Calibration"),
-            _buildSettingsTile(Icons.sync, "Sync with Apple Health / Google Fit"),
-            _buildSettingsTile(Icons.palette_outlined, "Theme Customization"),
+                  _buildSectionHeader("NOTIFICATIONS"),
+                  _buildNotificationsSection(),
+                  const SizedBox(height: 32),
 
-            AppSpacing.verticalMedium,
+                  _buildSectionHeader("ACCOUNT ACTIONS"),
+                  _buildAccountActions(),
+                  const SizedBox(height: 48),
 
-            // 4. Support Section
-            _buildSectionTitle("Support"),
-            _buildSettingsTile(Icons.help_outline, "Help Center"),
-            _buildSettingsTile(Icons.description_outlined, "Terms of Service"),
-
-            AppSpacing.verticalLarge,
-
-            // 5. Logout Button
-            Center(
-              child: TextButton(
-                onPressed: _logout,
-                child: const Text(
-                  "Log Out",
-                  style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
-                ),
+                  _buildFooter(),
+                  const SizedBox(height: 40),
+                ]),
               ),
             ),
-            const Center(
-              child: Text(
-                "Version 1.0.2",
-                style: TextStyle(color: AppColors.primaryMuted, fontSize: 12),
-              ),
-            ),
-            AppSpacing.verticalLarge,
           ],
         ),
       ),
+      bottomNavigationBar: _buildBottomNav(context),
     );
   }
 
-  Widget _buildProfileHeader() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          )
-        ],
-      ),
-      child: Row(
-        children: [
-          const CircleAvatar(
-            radius: 35,
-            backgroundColor: AppColors.lavender,
-            child: Icon(Icons.person, size: 35, color: AppColors.primaryDark),
-          ),
-          const SizedBox(width: 16),
-import 'package:provider/provider.dart';
-import '../theme/app_theme.dart';
-import '../providers/app_provider.dart';
-import 'splash_screen.dart';
+  // ==========================================
+  // WIDGETS
+  // ==========================================
 
-class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: HerLunaTheme.background,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        title: const Text('Settings'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: SafeArea(
-        child: Consumer<AppProvider>(
-          builder: (context, provider, _) {
-            return SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(
-                horizontal: HerLunaTheme.horizontalPadding,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 8),
-
-                  // ── Profile ───────────────────────────────────────
-                  _settingsGroup('Profile', [
-                    _settingsTile(
-                      icon: Icons.person_outline,
-                      title: 'Account',
-                      subtitle: provider.currentUser?.email ?? 'Not signed in',
-                    ),
-                    _settingsTile(
-                      icon: Icons.badge_outlined,
-                      title: 'Full Name',
-                      subtitle: provider.currentUser?.email.split('@').first ?? '',
-                    ),
-                  ]),
-                  const SizedBox(height: 16),
-
-                  // ── Data Mode ─────────────────────────────────────
-                  _settingsGroup('Data Mode', [
-                    _settingsTile(
-                      icon: provider.isCloudMode
-                          ? Icons.cloud_outlined
-                          : Icons.phone_android,
-                      title: 'Storage Mode',
-                      subtitle: provider.isCloudMode ? 'Cloud' : 'Local',
-                      trailing: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: HerLunaTheme.surfaceLight,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          provider.isCloudMode ? 'Cloud' : 'Local',
-                          style: HerLunaTheme.bodySmall.copyWith(
-                            color: HerLunaTheme.primary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ]),
-                  const SizedBox(height: 16),
-
-                  // ── Preferences ───────────────────────────────────
-                  _settingsGroup('Preferences', [
-                    _settingsTile(
-                      icon: Icons.child_care_outlined,
-                      title: 'Young Girl Mode',
-                      subtitle: provider.isYoungGirlMode ? 'On' : 'Off',
-                      trailing: Switch(
-                        value: provider.isYoungGirlMode,
-                        onChanged: (v) => provider.setYoungGirlMode(v),
-                        activeColor: HerLunaTheme.primary,
-                      ),
-                    ),
-                  ]),
-                  const SizedBox(height: 16),
-
-                  // ── Notifications ─────────────────────────────────
-                  _settingsGroup('Notifications', [
-                    _settingsTile(
-                      icon: Icons.notifications_outlined,
-                      title: 'Push Notifications',
-                      subtitle: 'Receive cycle and wellness reminders',
-                      trailing: Switch(
-                        value: true,
-                        onChanged: (_) {},
-                        activeColor: HerLunaTheme.primary,
-                      ),
-                    ),
-                  ]),
-                  const SizedBox(height: 16),
-
-                  // ── Privacy ───────────────────────────────────────
-                  _settingsGroup('Privacy', [
-                    _settingsTile(
-                      icon: Icons.shield_outlined,
-                      title: 'Privacy Policy',
-                      subtitle: 'How we protect your data',
-                    ),
-                    _settingsTile(
-                      icon: Icons.description_outlined,
-                      title: 'Terms of Service',
-                      subtitle: 'Usage terms and conditions',
-                    ),
-                  ]),
-                  const SizedBox(height: 24),
-
-                  // ── Logout ────────────────────────────────────────
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: () async {
-                        await provider.logout();
-                        if (context.mounted) {
-                          Navigator.of(context).pushAndRemoveUntil(
-                            MaterialPageRoute(
-                                builder: (_) => const SplashScreen()),
-                            (_) => false,
-                          );
-                        }
-                      },
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: HerLunaTheme.error,
-                        side: const BorderSide(color: HerLunaTheme.error),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.circular(HerLunaTheme.buttonRadius),
-                        ),
-                      ),
-                      child: const Text('Logout'),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Version
-                  Center(
-                    child: Text(
-                      'HerLuna v2.0.0',
-                      style: HerLunaTheme.bodySmall.copyWith(
-                        color: HerLunaTheme.textSecondary.withOpacity(0.5),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _settingsGroup(String title, List<Widget> children) {
+  Widget _buildHeader() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: HerLunaTheme.labelText.copyWith(
-            fontWeight: FontWeight.w600,
-            fontSize: 12,
-            letterSpacing: 0.5,
+        const Text(
+          "Settings",
+          style: TextStyle(
+            fontSize: 32,
+            fontWeight: FontWeight.w800,
+            color: _primaryDark,
+            letterSpacing: -0.5,
           ),
         ),
-        const SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            color: HerLunaTheme.cardColor,
-            borderRadius: BorderRadius.circular(HerLunaTheme.cardRadius),
-            boxShadow: HerLunaTheme.cardShadow,
+        const SizedBox(height: 6),
+        Text(
+          "Manage your account & preferences",
+          style: TextStyle(fontSize: 16, color: _textGray.withOpacity(0.9)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12, left: 4),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 1.5,
+          color: _textGray,
+        ),
+      ),
+    );
+  }
+
+  // --- SECTIONS ---
+
+  Widget _buildProfileSection() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        children: [
+          _buildSettingsTile(
+            icon: Icons.person_outline,
+            title: "Name",
+            trailingText: "rr",
           ),
-          child: Column(
-            children: children
-                .asMap()
-                .entries
-                .map((e) => Column(
-                      children: [
-                        e.value,
-                        if (e.key < children.length - 1)
-                          const Divider(
-                              height: 1,
-                              indent: 56,
-                              color: HerLunaTheme.divider),
-                      ],
-                    ))
-                .toList(),
+          const SizedBox(height: 24),
+          _buildSettingsTile(
+            icon: Icons.mail_outline,
+            title: "Email",
+            trailingText: "r",
+          ),
+          const SizedBox(height: 24),
+          _buildSettingsTile(
+            icon: Icons.show_chart,
+            title: "Age Range",
+            trailingText: "18-24",
+          ),
+          const SizedBox(height: 24),
+          _buildSettingsTile(
+            icon: Icons.show_chart,
+            title: "Activity Pattern",
+            trailingText: "Student",
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDataPrivacySection() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        children: [
+          _buildSettingsTile(
+            icon: Icons.storage,
+            title: "Storage Mode",
+            trailingText: "Local Only",
+            iconBgColor: _primaryMuted,
+            iconColor: Colors.white,
+          ),
+          const SizedBox(height: 24),
+          _buildSettingsTile(icon: Icons.lock_outline, title: "Privacy Policy"),
+          const SizedBox(height: 24),
+          _buildSettingsTile(
+            icon: Icons.info_outline,
+            title: "How Data is Used",
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCycleBaselineSection() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        children: [
+          _buildSettingsTile(
+            icon: Icons.calendar_today_outlined,
+            title: "Avg Cycle Length",
+            trailingText: "28 Days",
+          ),
+          const SizedBox(height: 24),
+          _buildSettingsTile(
+            icon: Icons.calendar_today_outlined,
+            title: "Last Period Start",
+            trailingText: "2026-03-04",
+          ),
+          const SizedBox(height: 24),
+          _buildSettingsTile(
+            icon: Icons.show_chart,
+            title: "Irregular Cycles",
+            trailingText: "No",
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNotificationsSection() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        children: [
+          _buildSwitchTile(
+            icon: Icons.notifications_none,
+            title: "Period Reminders",
+            value: _periodReminders,
+            onChanged: (val) => setState(() => _periodReminders = val),
+          ),
+          const SizedBox(height: 24),
+          _buildSwitchTile(
+            icon: Icons.notifications_none,
+            title: "Logging Reminders",
+            value: _loggingReminders,
+            onChanged: (val) => setState(() => _loggingReminders = val),
+          ),
+          const SizedBox(height: 24),
+          _buildSwitchTile(
+            icon: Icons.notifications_none,
+            title: "Cycle Insights",
+            value: _cycleInsights,
+            onChanged: (val) => setState(() => _cycleInsights = val),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAccountActions() {
+    return Column(
+      children: [
+        _buildActionButton(
+          label: "Clear Local Data",
+          icon: Icons.delete_outline,
+          textColor: const Color(0xFFE53935), // Vibrant Red
+          bgColor: Colors.white,
+        ),
+        const SizedBox(height: 12),
+        _buildActionButton(
+          label: "Reset Onboarding",
+          icon: Icons.autorenew,
+          textColor: _primaryDark,
+          bgColor: Colors.white,
+        ),
+        const SizedBox(height: 12),
+        _buildActionButton(
+          label: "Logout",
+          icon: Icons.logout,
+          textColor: Colors.white,
+          bgColor: _primaryMuted,
+          isSolid: true,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFooter() {
+    return Column(
+      children: [
+        const Text(
+          "HERLUNA AI V1.0.4",
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.2,
+            color: _textGray,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          "Crafted with intelligence for you.",
+          style: TextStyle(fontSize: 12, color: _textGray.withOpacity(0.6)),
+        ),
+      ],
+    );
+  }
+
+  // --- HELPER COMPONENTS ---
+
+  Widget _buildSettingsTile({
+    required IconData icon,
+    required String title,
+    String? trailingText,
+    Color? iconBgColor,
+    Color? iconColor,
+  }) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: iconBgColor ?? _bgWhite,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, size: 20, color: iconColor ?? _primaryDark),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: _primaryDark,
+            ),
+          ),
+        ),
+        if (trailingText != null)
+          Text(
+            trailingText,
+            style: const TextStyle(fontSize: 14, color: _textGray),
+          ),
+        const SizedBox(width: 8),
+        const Icon(Icons.chevron_right, size: 20, color: _lightGray),
+      ],
+    );
+  }
+
+  Widget _buildSwitchTile({
+    required IconData icon,
+    required String title,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: _bgWhite,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, size: 20, color: _primaryDark),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: _primaryDark,
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 30, // constrain switch height
+          child: Switch(
+            value: value,
+            onChanged: onChanged,
+            activeColor: _primaryMuted,
+            inactiveTrackColor: _lightGray,
+            inactiveThumbColor: Colors.white,
           ),
         ),
       ],
     );
   }
 
-  Widget _settingsTile({
+  Widget _buildActionButton({
+    required String label,
     required IconData icon,
-    required String title,
-    required String subtitle,
-    Widget? trailing,
+    required Color textColor,
+    required Color bgColor,
+    bool isSolid = false,
   }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          Icon(icon, color: HerLunaTheme.textSecondary, size: 22),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _displayName,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primaryDark),
-                ),
-                Text(
-                  _displayEmail,
-                  style: const TextStyle(color: AppColors.primaryMuted, fontSize: 14),
-                ),
-              ],
-            ),
-          ),
-          const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.primaryMuted),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12, left: 4),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.bold,
-          color: AppColors.primaryMuted,
-          letterSpacing: 1.2,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSettingsTile(IconData icon, String title) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 18),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(12),
+        color: bgColor,
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: AppColors.lavender.withOpacity(0.4),
-            borderRadius: BorderRadius.circular(8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 22, color: textColor),
+          const SizedBox(width: 12),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
           ),
-          child: Icon(icon, color: AppColors.primaryDark, size: 20),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(fontSize: 15, color: AppColors.primaryDark),
-        ),
-        trailing: const Icon(Icons.chevron_right, color: AppColors.primaryMuted),
-        onTap: () {},
+        ],
       ),
     );
   }
-}
-                Text(title,
-                    style: HerLunaTheme.bodyLarge.copyWith(fontSize: 14)),
-                Text(subtitle, style: HerLunaTheme.bodySmall),
-              ],
-            ),
+
+  // ==========================================
+  // BOTTOM NAVIGATION BAR
+  // ==========================================
+  Widget _buildBottomNav(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(30),
+          topRight: Radius.circular(30),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 20,
+            offset: const Offset(0, -5),
           ),
-          if (trailing != null) trailing,
         ],
+      ),
+      child: ClipRRect(
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(30),
+          topRight: Radius.circular(30),
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          type: BottomNavigationBarType.fixed,
+          backgroundColor: Colors.white,
+          selectedItemColor: _primaryDark,
+          unselectedItemColor: const Color(0xFFC4BCC8),
+          selectedLabelStyle: const TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 11,
+            height: 1.8,
+          ),
+          unselectedLabelStyle: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 11,
+            height: 1.8,
+          ),
+          elevation: 0,
+          onTap: (index) {
+            if (index == _currentIndex) return;
+            Widget nextScreen;
+            switch (index) {
+              case 0:
+                nextScreen = const HomeScreen();
+                break;
+              case 1:
+                nextScreen = const CalendarScreen();
+                break;
+              case 2:
+                nextScreen = const InsightsScreen();
+                break;
+              case 3:
+                nextScreen = const PlannerScreen();
+                break;
+              case 4:
+                nextScreen = const SettingsScreen();
+                break;
+              default:
+                return;
+            }
+            Navigator.pushReplacement(
+              context,
+              PageRouteBuilder(
+                pageBuilder: (context, animation1, animation2) => nextScreen,
+                transitionDuration: Duration.zero,
+                reverseTransitionDuration: Duration.zero,
+              ),
+            );
+          },
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home_filled, size: 28),
+              label: "Home",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.calendar_today_outlined, size: 26),
+              label: "Calendar",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.auto_awesome_outlined, size: 28),
+              label: "Insights",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.favorite_border_rounded, size: 28),
+              label: "Planner",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.settings_outlined, size: 28),
+              label: "Settings",
+            ),
+          ],
+        ),
       ),
     );
   }

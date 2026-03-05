@@ -1,10 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:table_calendar/table_calendar.dart';
+import 'package:intl/intl.dart';
+
+// Your functional imports (Adjust paths if necessary)
 import '../core/colors.dart';
 import '../core/spacing.dart';
-import '../services/api_service.dart';
-import '../services/storage_service.dart';
-import '../navigation/main_shell.dart';
 import 'login_screen.dart';
+import 'home_screen.dart';
+
+// --- THEME CONSTANTS FOR EXACT VISUAL MATCH ---
+const Color _bgWhite = Color(0xFFF7F6F2);
+const Color _primaryDark = Color(0xFF45384D);
+const Color _primaryMuted = Color(0xFF6E5C77);
+const Color _disabledButton = Color(0xFFB1A6B6);
+const Color _textGray = Color(0xFF8A8290);
+const Color _lightGray = Color(0xFFE4DFE5);
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -17,95 +27,61 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
-  // Collected data across slides
-  String _name = '';
-  String _email = '';
-  String _password = '';
-  String _ageRange = '';
-  String _activityLevel = '';
-  String _storageMode = 'cloud';
-  int _cycleLength = 28;
+  // Controllers to capture user input from Step 2
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
 
-  void _nextPage() {
-    _pageController.nextPage(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
-  Future<void> _completeOnboarding() async {
-    try {
-      final api = ApiService();
-      final result = await api.register(
-        email: _email,
-        password: _password,
-        name: _name,
-        storageMode: _storageMode,
-      );
-
-      // Store credentials locally
-      await StorageService.saveToken(result['access_token']);
-      await StorageService.saveUserId(result['user']['id']);
-      await StorageService.saveEmail(_email);
-      await StorageService.saveStorageMode(_storageMode);
-      await StorageService.setOnboardingComplete(true);
-
-      if (!mounted) return;
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const MainShell()),
-        (_) => false,
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Registration failed: $e'), backgroundColor: Colors.redAccent),
-      );
-    }
+  void _nextPage() {
+    FocusScope.of(context).unfocus(); // Hide keyboard
+    _pageController.nextPage(
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeInOut,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: _bgWhite,
       body: SafeArea(
         child: Column(
           children: [
-            // Progress Indicator
-            LinearProgressIndicator(
-              value: (_currentPage + 1) / 5,
-              backgroundColor: AppColors.lavender,
-              color: AppColors.primaryMuted,
-            ),
-            
+            if (_currentPage > 0) _buildProgressBar(),
             Expanded(
               child: PageView(
                 controller: _pageController,
-                physics: const NeverScrollableScrollPhysics(),
-                onPageChanged: (int page) => setState(() => _currentPage = page),
+                physics:
+                    const NeverScrollableScrollPhysics(), // Disables swipe navigation
+                onPageChanged: (int page) =>
+                    setState(() => _currentPage = page),
                 children: [
-                  _ConsentSlide(
+                  _Step1Consent(onNext: _nextPage),
+                  _Step2BasicInfo(
                     onNext: _nextPage,
-                    onLogin: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+                    nameController: _nameController,
+                    emailController: _emailController,
+                    passwordController: _passwordController,
                   ),
-                  _BasicInfoSlide(
-                    onNext: _nextPage,
-                    onNameChanged: (v) => _name = v,
-                  ),
-                  _AgeActivitySlide(
-                    onNext: _nextPage,
-                    onAgeChanged: (v) => _ageRange = v,
-                    onActivityChanged: (v) => _activityLevel = v,
-                  ),
-                  _StorageModeSlide(
-                    onNext: _nextPage,
-                    onModeChanged: (v) => _storageMode = v,
-                  ),
-                  _CycleBaselineSlide(
-                    onNext: _completeOnboarding,
-                    onEmailChanged: (v) => _email = v,
-                    onPasswordChanged: (v) => _password = v,
-                    onCycleLengthChanged: (v) => _cycleLength = v,
+                  _Step3AgeActivity(onNext: _nextPage),
+                  _Step4Storage(onNext: _nextPage),
+                  _Step5CycleBaseline(
+                    // Simple navigation to home page
+                    onFinish: () => Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const HomeScreen(),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -115,357 +91,912 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       ),
     );
   }
+
+  Widget _buildProgressBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+      child: Row(
+        children: List.generate(4, (index) {
+          bool isActive = index <= (_currentPage - 1);
+          return Expanded(
+            child: Container(
+              height: 4,
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: isActive ? _primaryMuted : _lightGray,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
 }
 
-// --- SLIDE 1: CONSENT ---
-class _ConsentSlide extends StatelessWidget {
-  final VoidCallback onNext;
-  final VoidCallback onLogin;
-  const _ConsentSlide({required this.onNext, required this.onLogin});
+// ==========================================
+// SCROLLABLE WRAPPER (FIXED FOR LAYOUT ERRORS)
+// ==========================================
+class _ScrollableStepWrapper extends StatelessWidget {
+  final List<Widget> children;
+  final Widget bottomButton;
+
+  const _ScrollableStepWrapper({
+    required this.children,
+    required this.bottomButton,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: AppSpacing.screenPadding,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.only(left: 24, right: 24, top: 16),
+          sliver: SliverList(delegate: SliverChildListDelegate(children)),
+        ),
+        SliverFillRemaining(
+          hasScrollBody: false,
+          fillOverscroll: true,
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(
+                left: 24,
+                right: 24,
+                bottom: 16,
+                top: 32,
+              ),
+              child: bottomButton,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ==========================================
+// SLIDE 1: CONSENT
+// ==========================================
+class _Step1Consent extends StatelessWidget {
+  final VoidCallback onNext;
+  const _Step1Consent({required this.onNext});
+
+  @override
+  Widget build(BuildContext context) {
+    return _ScrollableStepWrapper(
+      bottomButton: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.security, size: 80, color: AppColors.primaryMuted),
-          AppSpacing.verticalMedium,
-          const Text("Your Privacy Matters", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.primaryDark)),
-          AppSpacing.verticalSmall,
-          const Text("We encrypt your health data. To continue, please agree to our terms.", textAlign: TextAlign.center),
-          AppSpacing.verticalLarge,
           ElevatedButton(
             onPressed: onNext,
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryDark, minimumSize: const Size(double.infinity, 50)),
-            child: const Text("I Consent", style: TextStyle(color: Colors.white)),
-          ),
-          AppSpacing.verticalSmall,
-          OutlinedButton(
-            onPressed: onLogin,
-            style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 50), side: const BorderSide(color: AppColors.primaryMuted)),
-            child: const Text("Login with Email", style: TextStyle(color: AppColors.primaryMuted)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// --- SLIDE 2: BASIC INFO ---
-class _BasicInfoSlide extends StatelessWidget {
-  final VoidCallback onNext;
-  final ValueChanged<String> onNameChanged;
-  const _BasicInfoSlide({required this.onNext, required this.onNameChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: AppSpacing.screenPadding,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Text("Tell us your name", style: TextStyle(fontSize: 22, color: AppColors.primaryDark)),
-          AppSpacing.verticalMedium,
-          TextField(
-            onChanged: onNameChanged,
-            decoration: const InputDecoration(hintText: "Full Name", border: OutlineInputBorder()),
-          ),
-          AppSpacing.verticalLarge,
-          ElevatedButton(onPressed: onNext, child: const Text("Continue")),
-        ],
-      ),
-    );
-  }
-}
-
-// --- SLIDE 3: AGE & ACTIVITY ---
-class _AgeActivitySlide extends StatefulWidget {
-  final VoidCallback onNext;
-  final ValueChanged<String> onAgeChanged;
-  final ValueChanged<String> onActivityChanged;
-  const _AgeActivitySlide({required this.onNext, required this.onAgeChanged, required this.onActivityChanged});
-
-  @override
-  State<_AgeActivitySlide> createState() => _AgeActivitySlideState();
-}
-
-class _AgeActivitySlideState extends State<_AgeActivitySlide> {
-  String _selectedAge = '';
-  String _selectedActivity = '';
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: AppSpacing.screenPadding,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Text("Age Range", style: TextStyle(fontSize: 22, color: AppColors.primaryDark)),
-          AppSpacing.verticalSmall,
-          Wrap(
-            spacing: 8,
-            children: ['13-17', '18-25', '26-35', '36-45', '46+'].map((age) {
-              final selected = _selectedAge == age;
-              return ChoiceChip(
-                label: Text(age),
-                selected: selected,
-                selectedColor: AppColors.lavender,
-                onSelected: (_) {
-                  setState(() => _selectedAge = age);
-                  widget.onAgeChanged(age);
-                },
-              );
-            }).toList(),
-          ),
-          AppSpacing.verticalMedium,
-          const Text("Activity Level", style: TextStyle(fontSize: 22, color: AppColors.primaryDark)),
-          AppSpacing.verticalSmall,
-          Wrap(
-            spacing: 8,
-            children: ['Sedentary', 'Light', 'Moderate', 'Active'].map((level) {
-              final selected = _selectedActivity == level;
-              return ChoiceChip(
-                label: Text(level),
-                selected: selected,
-                selectedColor: AppColors.accentMint,
-                onSelected: (_) {
-                  setState(() => _selectedActivity = level);
-                  widget.onActivityChanged(level);
-                },
-              );
-            }).toList(),
-          ),
-          AppSpacing.verticalLarge,
-          ElevatedButton(onPressed: widget.onNext, child: const Text("Continue")),
-        ],
-      ),
-    );
-  }
-}
-
-// --- SLIDE 4: STORAGE MODE ---
-class _StorageModeSlide extends StatefulWidget {
-  final VoidCallback onNext;
-  final ValueChanged<String> onModeChanged;
-  const _StorageModeSlide({required this.onNext, required this.onModeChanged});
-
-  @override
-  State<_StorageModeSlide> createState() => _StorageModeSlideState();
-}
-
-class _StorageModeSlideState extends State<_StorageModeSlide> {
-  String _mode = 'cloud';
-
-  Widget _modeCard(String mode, String title, String desc, IconData icon) {
-    final selected = _mode == mode;
-    return GestureDetector(
-      onTap: () {
-        setState(() => _mode = mode);
-        widget.onModeChanged(mode);
-      },
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.lavender.withValues(alpha: 0.3) : Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: selected ? AppColors.primaryDark : AppColors.lavender, width: selected ? 2 : 1),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: AppColors.primaryDark, size: 28),
-            const SizedBox(width: 16),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryDark)),
-              Text(desc, style: const TextStyle(fontSize: 13, color: AppColors.primaryMuted)),
-            ])),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: AppSpacing.screenPadding,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Text("Data Storage", style: TextStyle(fontSize: 22, color: AppColors.primaryDark)),
-          AppSpacing.verticalMedium,
-          _modeCard('cloud', 'Cloud Mode', 'Data stored securely on our servers. Full AI features.', Icons.cloud_outlined),
-          _modeCard('local', 'Local Mode', 'Data stays on your device only. Maximum privacy.', Icons.phone_android_outlined),
-          AppSpacing.verticalLarge,
-          ElevatedButton(onPressed: widget.onNext, child: const Text("Continue")),
-        ],
-      ),
-    );
-  }
-}
-
-// --- SLIDE 5: ACCOUNT & CYCLE BASELINE ---
-class _CycleBaselineSlide extends StatefulWidget {
-  final VoidCallback onNext;
-  final ValueChanged<String> onEmailChanged;
-  final ValueChanged<String> onPasswordChanged;
-  final ValueChanged<int> onCycleLengthChanged;
-  const _CycleBaselineSlide({required this.onNext, required this.onEmailChanged, required this.onPasswordChanged, required this.onCycleLengthChanged});
-
-  @override
-  State<_CycleBaselineSlide> createState() => _CycleBaselineSlideState();
-}
-
-class _CycleBaselineSlideState extends State<_CycleBaselineSlide> {
-  double _cycleLength = 28;
-  bool _isLoading = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: AppSpacing.screenPadding,
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AppSpacing.verticalLarge,
-            const Text("Create Account", style: TextStyle(fontSize: 22, color: AppColors.primaryDark)),
-            AppSpacing.verticalMedium,
-            TextField(
-              onChanged: widget.onEmailChanged,
-              decoration: const InputDecoration(hintText: "Email", prefixIcon: Icon(Icons.email_outlined), border: OutlineInputBorder()),
-              keyboardType: TextInputType.emailAddress,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _primaryMuted,
+              minimumSize: const Size(double.infinity, 60),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(30),
+              ),
+              elevation: 0,
             ),
-            AppSpacing.verticalSmall,
-            TextField(
-              onChanged: widget.onPasswordChanged,
-              obscureText: true,
-              decoration: const InputDecoration(hintText: "Password", prefixIcon: Icon(Icons.lock_outline), border: OutlineInputBorder()),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  "I Consent & Understand",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                SizedBox(width: 8),
+                Icon(Icons.arrow_forward, color: Colors.white, size: 20),
+              ],
             ),
-            AppSpacing.verticalLarge,
-            const Text("Typical Cycle Length", style: TextStyle(fontSize: 18, color: AppColors.primaryDark)),
-            AppSpacing.verticalSmall,
-            Text("${_cycleLength.round()} days", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.primaryMuted)),
-            Slider(
-              value: _cycleLength,
-              min: 20,
-              max: 40,
-              divisions: 20,
-              activeColor: AppColors.primaryMuted,
-              onChanged: (v) {
-                setState(() => _cycleLength = v);
-                widget.onCycleLengthChanged(v.round());
-              },
-            ),
-            AppSpacing.verticalLarge,
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : () {
-                  setState(() => _isLoading = true);
-                  widget.onNext();
-                },
-                child: _isLoading
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text("Create Account & Start"),
+          ),
+          const SizedBox(height: 16),
+          Center(
+            child: TextButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const LoginScreen()),
+              ),
+              child: const Text(
+                "Already have an account? Login",
+                style: TextStyle(
+                  color: _primaryMuted,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
-            AppSpacing.verticalMedium,
-          ],
-        ),
+          ),
+        ],
       ),
+      children: [
+        const SizedBox(height: 20),
+        const Center(
+          child: Icon(Icons.incomplete_circle, size: 40, color: _primaryDark),
+        ),
+        const SizedBox(height: 50),
+        const Text(
+          "Actionable Help,\nPrivately Held.",
+          style: TextStyle(
+            fontSize: 34,
+            height: 1.15,
+            fontWeight: FontWeight.w800,
+            color: _primaryDark,
+          ),
+        ),
+        const SizedBox(height: 40),
+        _buildFeatureItem(
+          icon: Icons.favorite_border,
+          title: "Lifestyle Companion",
+          description:
+              "We don't just track. We provide specific nutrition, movement, and rest protocols.",
+        ),
+        const SizedBox(height: 24),
+        _buildFeatureItem(
+          icon: Icons.lock_outline,
+          title: "Local-First Trust",
+          description:
+              "Your health profile and logs never leave your phone unless you choose to back them up.",
+        ),
+      ],
     );
   }
-}
-import '../theme/app_theme.dart';
-import 'profile_setup_screen.dart';
 
-class OnboardingScreen extends StatelessWidget {
-  const OnboardingScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: HerLunaTheme.background,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: HerLunaTheme.horizontalPadding,
+  Widget _buildFeatureItem({
+    required IconData icon,
+    required String title,
+    required String description,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.02),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
+          child: Icon(icon, size: 24, color: _primaryDark),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Spacer(flex: 2),
-              // Logo
-              Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: HerLunaTheme.heroGradient,
-                ),
-                child: const Icon(
-                  Icons.nightlight_round,
-                  size: 36,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 40),
-              // Heading
-              const Text(
-                'Welcome to HerLuna',
-                style: HerLunaTheme.heading1,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
               Text(
-                'Personalized cycle and\nlifestyle intelligence.',
-                style: HerLunaTheme.bodyLarge.copyWith(
-                  color: HerLunaTheme.textSecondary,
-                  height: 1.6,
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: _primaryDark,
                 ),
-                textAlign: TextAlign.center,
               ),
-              const Spacer(flex: 3),
-              // Create Profile
-              HerLunaButton(
-                text: 'Create Profile',
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const ProfileSetupScreen(),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-              // Login
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const ProfileSetupScreen(isLogin: true),
-                    ),
-                  );
-                },
-                child: const Text('Login'),
-              ),
-              const SizedBox(height: 24),
-              // Disclaimer
+              const SizedBox(height: 6),
               Text(
-                'HerLuna provides probabilistic insights,\nnot medical diagnosis.',
-                style: HerLunaTheme.bodySmall.copyWith(
-                  color: HerLunaTheme.textSecondary.withOpacity(0.7),
+                description,
+                style: const TextStyle(
+                  fontSize: 14,
+                  height: 1.4,
+                  color: _textGray,
                 ),
-                textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 32),
             ],
           ),
         ),
+      ],
+    );
+  }
+}
+
+// ==========================================
+// SLIDE 2: BASIC INFO
+// ==========================================
+class _Step2BasicInfo extends StatefulWidget {
+  final VoidCallback onNext;
+  final TextEditingController nameController;
+  final TextEditingController emailController;
+  final TextEditingController passwordController;
+
+  const _Step2BasicInfo({
+    required this.onNext,
+    required this.nameController,
+    required this.emailController,
+    required this.passwordController,
+  });
+
+  @override
+  State<_Step2BasicInfo> createState() => _Step2BasicInfoState();
+}
+
+class _Step2BasicInfoState extends State<_Step2BasicInfo> {
+  bool _isFormValid = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.nameController.addListener(_validateForm);
+    widget.emailController.addListener(_validateForm);
+    widget.passwordController.addListener(_validateForm);
+  }
+
+  void _validateForm() {
+    final isValid =
+        widget.nameController.text.trim().isNotEmpty &&
+        widget.emailController.text.trim().isNotEmpty &&
+        widget.passwordController.text.isNotEmpty;
+    if (_isFormValid != isValid) {
+      setState(() => _isFormValid = isValid);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _ScrollableStepWrapper(
+      bottomButton: _buildContinueButton(
+        widget.onNext,
+        disabled: !_isFormValid,
+      ),
+      children: [
+        const Text(
+          "Let's personalize your\nexperience",
+          style: TextStyle(
+            fontSize: 30,
+            fontWeight: FontWeight.w800,
+            color: _primaryDark,
+            height: 1.15,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          "This helps us tailor your insights.",
+          style: TextStyle(fontSize: 16, color: _textGray),
+        ),
+        const SizedBox(height: 32),
+        const Text(
+          "Basic Information",
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: _primaryDark,
+          ),
+        ),
+        const SizedBox(height: 20),
+        _buildInputGroup("Name", "Your name", widget.nameController),
+        const SizedBox(height: 16),
+        _buildInputGroup(
+          "Email",
+          "your@email.com",
+          widget.emailController,
+          isEmail: true,
+        ),
+        const SizedBox(height: 16),
+        _buildInputGroup(
+          "Password",
+          "••••••••",
+          widget.passwordController,
+          obscure: true,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInputGroup(
+    String label,
+    String hint,
+    TextEditingController controller, {
+    bool obscure = false,
+    bool isEmail = false,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: _textGray,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          obscureText: obscure,
+          keyboardType: isEmail
+              ? TextInputType.emailAddress
+              : TextInputType.text,
+          style: const TextStyle(color: _primaryDark, fontSize: 16),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: TextStyle(color: _textGray.withOpacity(0.5)),
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 16,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ==========================================
+// SLIDE 3: AGE & ACTIVITY
+// ==========================================
+class _Step3AgeActivity extends StatefulWidget {
+  final VoidCallback onNext;
+  const _Step3AgeActivity({required this.onNext});
+
+  @override
+  State<_Step3AgeActivity> createState() => _Step3AgeActivityState();
+}
+
+class _Step3AgeActivityState extends State<_Step3AgeActivity> {
+  String? _selectedAge;
+  String? _selectedActivity;
+
+  @override
+  Widget build(BuildContext context) {
+    bool isComplete = _selectedAge != null && _selectedActivity != null;
+
+    return _ScrollableStepWrapper(
+      bottomButton: _buildContinueButton(widget.onNext, disabled: !isComplete),
+      children: [
+        const Text(
+          "Let's personalize your\nexperience",
+          style: TextStyle(
+            fontSize: 30,
+            fontWeight: FontWeight.w800,
+            color: _primaryDark,
+            height: 1.15,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          "This helps us tailor your insights.",
+          style: TextStyle(fontSize: 16, color: _textGray),
+        ),
+        const SizedBox(height: 32),
+
+        const Text(
+          "Age Range",
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: _primaryDark,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: ["Under 18", "18-24", "25-34", "35-44", "45+"].map((age) {
+            bool isSelected = _selectedAge == age;
+            return GestureDetector(
+              onTap: () => setState(() => _selectedAge = age),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: isSelected ? _primaryMuted : Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: isSelected
+                      ? Border.all(color: _primaryDark, width: 1.5)
+                      : null,
+                ),
+                child: Text(
+                  age,
+                  style: TextStyle(
+                    color: isSelected ? Colors.white : _textGray,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 32),
+
+        const Text(
+          "Activity Pattern",
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: _primaryDark,
+          ),
+        ),
+        const SizedBox(height: 16),
+        GridView.count(
+          crossAxisCount: 2,
+          crossAxisSpacing: 16,
+          mainAxisSpacing: 16,
+          childAspectRatio: 1.3,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          children: [
+            _buildActivityCard("Student", Icons.school_outlined),
+            _buildActivityCard("Athlete", Icons.emoji_events_outlined),
+            _buildActivityCard("Working\nProfessional", Icons.work_outline),
+            _buildActivityCard("Mixed Routine", Icons.show_chart),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActivityCard(String title, IconData icon) {
+    bool isSelected = _selectedActivity == title;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedActivity = title),
+      child: Container(
+        decoration: BoxDecoration(
+          color: isSelected ? _primaryMuted : Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: isSelected ? Border.all(color: _primaryDark, width: 2) : null,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 32,
+              color: isSelected ? Colors.white : _primaryMuted,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: isSelected ? Colors.white : _textGray,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                height: 1.2,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+}
+
+// ==========================================
+// SLIDE 4: STORAGE MODE
+// ==========================================
+class _Step4Storage extends StatefulWidget {
+  final VoidCallback onNext;
+  const _Step4Storage({required this.onNext});
+
+  @override
+  State<_Step4Storage> createState() => _Step4StorageState();
+}
+
+class _Step4StorageState extends State<_Step4Storage> {
+  bool _isLocalSelected = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return _ScrollableStepWrapper(
+      bottomButton: _buildContinueButton(widget.onNext, disabled: false),
+      children: [
+        const Text(
+          "Choose how your data\nis handled",
+          style: TextStyle(
+            fontSize: 30,
+            fontWeight: FontWeight.w800,
+            color: _primaryDark,
+            height: 1.15,
+          ),
+        ),
+        const SizedBox(height: 32),
+        GestureDetector(
+          onTap: () => setState(() => _isLocalSelected = false),
+          child: _buildStorageCard(
+            title: "Cloud Mode",
+            desc:
+                "Secure backup and multi-device access. Your data is synced across your devices.",
+            icon: Icons.cloud_queue,
+            isSelected: !_isLocalSelected,
+          ),
+        ),
+        const SizedBox(height: 16),
+        GestureDetector(
+          onTap: () => setState(() => _isLocalSelected = true),
+          child: _buildStorageCard(
+            title: "Local Mode",
+            desc:
+                "Data stays only on this device. Maximum privacy, but no backup if you lose your phone.",
+            icon: Icons.gpp_good_outlined,
+            isSelected: _isLocalSelected,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStorageCard({
+    required String title,
+    required String desc,
+    required IconData icon,
+    required bool isSelected,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isSelected ? _primaryMuted : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: isSelected ? Colors.white.withOpacity(0.2) : _bgWhite,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  icon,
+                  color: isSelected ? Colors.white : _primaryDark,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: isSelected ? Colors.white : _primaryDark,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            desc,
+            style: TextStyle(
+              fontSize: 14,
+              height: 1.4,
+              color: isSelected ? Colors.white.withOpacity(0.9) : _textGray,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==========================================
+// SLIDE 5: CYCLE BASELINE
+// ==========================================
+class _Step5CycleBaseline extends StatefulWidget {
+  final VoidCallback onFinish;
+  const _Step5CycleBaseline({required this.onFinish});
+
+  @override
+  State<_Step5CycleBaseline> createState() => _Step5CycleBaselineState();
+}
+
+class _Step5CycleBaselineState extends State<_Step5CycleBaseline> {
+  bool isIrregular = false;
+  DateTime _focusedDay = DateTime.now();
+  DateTime? _rangeStart;
+  DateTime? _rangeEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    return _ScrollableStepWrapper(
+      bottomButton: ElevatedButton(
+        onPressed: _rangeStart == null ? null : widget.onFinish,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _primaryMuted,
+          disabledBackgroundColor: _disabledButton,
+          minimumSize: const Size(double.infinity, 60),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(30),
+          ),
+          elevation: 0,
+        ),
+        child: const Text(
+          "Finish Setup",
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      children: [
+        const Text(
+          "Set Your Cycle\nBaseline",
+          style: TextStyle(
+            fontSize: 30,
+            fontWeight: FontWeight.w800,
+            color: _primaryDark,
+            height: 1.15,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          "Initial calibration for personalized insights.",
+          style: TextStyle(fontSize: 16, color: _textGray),
+        ),
+        const SizedBox(height: 24),
+
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Irregular Cycles",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: _primaryDark,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "My cycles vary significantly in length",
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: _textGray.withOpacity(0.8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: isIrregular,
+                onChanged: (val) => setState(() => isIrregular = val),
+                activeColor: _primaryMuted,
+                inactiveTrackColor: _lightGray,
+                inactiveThumbColor: Colors.white,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              "LAST PERIOD\nRANGE",
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.2,
+                color: _primaryDark,
+              ),
+            ),
+            Row(
+              children: [
+                GestureDetector(
+                  onTap: () => setState(
+                    () => _focusedDay = DateTime(
+                      _focusedDay.year,
+                      _focusedDay.month - 1,
+                      1,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.chevron_left,
+                    color: _textGray,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  DateFormat('MMM yyyy').format(_focusedDay),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    color: _primaryDark,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => setState(
+                    () => _focusedDay = DateTime(
+                      _focusedDay.year,
+                      _focusedDay.month + 1,
+                      1,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.chevron_right,
+                    color: _textGray,
+                    size: 24,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: TableCalendar(
+            firstDay: DateTime.utc(2020, 1, 1),
+            lastDay: DateTime.utc(2030, 12, 31),
+            focusedDay: _focusedDay,
+            headerVisible: false,
+            rangeStartDay: _rangeStart,
+            rangeEndDay: _rangeEnd,
+            rangeSelectionMode: RangeSelectionMode.toggledOn,
+            onRangeSelected: (start, end, focusedDay) {
+              setState(() {
+                _rangeStart = start;
+                _rangeEnd = end;
+                _focusedDay = focusedDay;
+              });
+            },
+            onPageChanged: (focusedDay) =>
+                setState(() => _focusedDay = focusedDay),
+            daysOfWeekHeight: 40,
+            daysOfWeekStyle: DaysOfWeekStyle(
+              dowTextFormatter: (date, locale) =>
+                  DateFormat.E(locale).format(date)[0],
+              weekdayStyle: const TextStyle(
+                color: _lightGray,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+              weekendStyle: const TextStyle(
+                color: _lightGray,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+            calendarStyle: CalendarStyle(
+              defaultTextStyle: const TextStyle(
+                color: _primaryDark,
+                fontSize: 15,
+              ),
+              weekendTextStyle: const TextStyle(
+                color: _primaryDark,
+                fontSize: 15,
+              ),
+              outsideDaysVisible: false,
+              rangeStartDecoration: const BoxDecoration(
+                color: _primaryMuted,
+                shape: BoxShape.circle,
+              ),
+              rangeEndDecoration: const BoxDecoration(
+                color: _primaryMuted,
+                shape: BoxShape.circle,
+              ),
+              rangeHighlightColor: _primaryMuted.withOpacity(0.15),
+              withinRangeTextStyle: const TextStyle(
+                color: _primaryDark,
+                fontWeight: FontWeight.w600,
+              ),
+              todayDecoration: BoxDecoration(
+                color: Colors.transparent,
+                border: Border.all(color: _primaryMuted, width: 2),
+                shape: BoxShape.circle,
+              ),
+              todayTextStyle: const TextStyle(
+                color: _primaryDark,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              "START: ${_rangeStart != null ? DateFormat('MMM d').format(_rangeStart!).toUpperCase() : '---'}",
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1,
+                color: _textGray,
+              ),
+            ),
+            Text(
+              "END: ${_rangeEnd != null ? DateFormat('MMM d').format(_rangeEnd!).toUpperCase() : '---'}",
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1,
+                color: _textGray,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: RichText(
+            text: const TextSpan(
+              style: TextStyle(fontSize: 13, color: _textGray, height: 1.4),
+              children: [
+                TextSpan(
+                  text: "Tip: ",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: _primaryDark,
+                  ),
+                ),
+                TextSpan(
+                  text:
+                      "Selecting your last period range helps us calculate your current cycle day and phase more accurately.",
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ==========================================
+// SHARED WIDGETS
+// ==========================================
+Widget _buildContinueButton(VoidCallback onPressed, {bool disabled = false}) {
+  return ElevatedButton(
+    onPressed: disabled ? null : onPressed,
+    style: ElevatedButton.styleFrom(
+      backgroundColor: _primaryMuted,
+      disabledBackgroundColor: _disabledButton,
+      minimumSize: const Size(double.infinity, 60),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+      elevation: 0,
+    ),
+    child: const Text(
+      "Continue",
+      style: TextStyle(
+        color: Colors.white,
+        fontSize: 17,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
 }

@@ -23,16 +23,14 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _checkAuthAndNavigate() async {
-    await Future.delayed(const Duration(seconds: 2)); // Show splash briefly
+    await Future.delayed(const Duration(seconds: 2));
 
     final token = await StorageService.getToken();
-    final userId = await StorageService.getUserId();
     final onboarded = await StorageService.isOnboardingComplete();
 
     if (!mounted) return;
 
-    if (token != null && userId != null && onboarded) {
-      // Restore token to ApiService
+    if (token != null && onboarded) {
       ApiService().setToken(token);
       Navigator.pushReplacement(
         context,
@@ -96,7 +94,7 @@ class _SplashScreenState extends State<SplashScreen>
               // 1. Logo (Using Constant)
               Image.asset(
                 AppConstants.logoPath,
-                width: 140,
+                width: 140, // You can also move this to AppConstants
                 fit: BoxFit.contain,
               ),
 
@@ -122,7 +120,7 @@ class _SplashScreenState extends State<SplashScreen>
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 16,
-                  color: AppColors.primaryDark,
+                  color: AppColors.primaryDark, // Using the deep purple for readability
                   height: 1.5,
                   fontWeight: FontWeight.w300,
                 ),

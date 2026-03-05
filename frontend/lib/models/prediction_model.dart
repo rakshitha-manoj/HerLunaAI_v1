@@ -117,21 +117,44 @@ class RiskState {
   }
 }
 
+class BaselineMetrics {
+  final double? meanCycleLength;
+  final double? cycleVariabilityIndex;
+  final double? behavioralDeviationScore;
+
+  BaselineMetrics({
+    this.meanCycleLength,
+    this.cycleVariabilityIndex,
+    this.behavioralDeviationScore,
+  });
+
+  factory BaselineMetrics.fromJson(Map<String, dynamic> json) {
+    return BaselineMetrics(
+      meanCycleLength: (json['mean_cycle_length'] as num?)?.toDouble(),
+      cycleVariabilityIndex: (json['cycle_variability_index'] as num?)?.toDouble(),
+      behavioralDeviationScore: (json['behavioral_deviation_score'] as num?)?.toDouble(),
+    );
+  }
+}
+
 class InferenceMeta {
   final double confidenceScore;
   final String inferenceMode;
+  final BaselineMetrics baselineMetrics;
   final List<Guidance> guidance;
 
   InferenceMeta({
     this.confidenceScore = 0.0,
     this.inferenceMode = 'unknown',
+    BaselineMetrics? baselineMetrics,
     this.guidance = const [],
-  });
+  }) : baselineMetrics = baselineMetrics ?? BaselineMetrics();
 
   factory InferenceMeta.fromJson(Map<String, dynamic> json) {
     return InferenceMeta(
       confidenceScore: (json['confidence_score'] ?? 0.0).toDouble(),
       inferenceMode: json['inference_mode'] ?? 'unknown',
+      baselineMetrics: BaselineMetrics.fromJson(json['baseline_metrics'] ?? {}),
       guidance: (json['guidance'] as List<dynamic>?)
               ?.map((g) => Guidance.fromJson(g))
               .toList() ??

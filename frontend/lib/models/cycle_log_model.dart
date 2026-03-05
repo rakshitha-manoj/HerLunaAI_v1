@@ -1,16 +1,24 @@
 /// HerLuna Cycle Log Model
 class CycleLogModel {
   final int? id;
-  final int userId;
+  final int? userId;
   final DateTime periodStart;
   final int? cycleLength;
+  final int? bleedingDays;
+  final String? flowIntensity;
+  final List<String>? symptoms;
+  final String? notes;
   final DateTime? createdAt;
 
   CycleLogModel({
     this.id,
-    required this.userId,
+    this.userId,
     required this.periodStart,
     this.cycleLength,
+    this.bleedingDays,
+    this.flowIntensity,
+    this.symptoms,
+    this.notes,
     this.createdAt,
   });
 
@@ -20,6 +28,12 @@ class CycleLogModel {
       userId: json['user_id'],
       periodStart: DateTime.parse(json['period_start']),
       cycleLength: json['cycle_length'],
+      bleedingDays: json['bleeding_days'],
+      flowIntensity: json['flow_intensity'],
+      symptoms: json['symptoms'] != null
+          ? List<String>.from(json['symptoms'])
+          : null,
+      notes: json['notes'],
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
           : null,
@@ -27,8 +41,10 @@ class CycleLogModel {
   }
 
   Map<String, dynamic> toJson() => {
-        'user_id': userId,
         'period_start': periodStart.toIso8601String().split('T')[0],
-        'cycle_length': cycleLength,
+        if (bleedingDays != null) 'bleeding_days': bleedingDays,
+        if (flowIntensity != null) 'flow_intensity': flowIntensity,
+        if (symptoms != null) 'symptoms': symptoms,
+        if (notes != null) 'notes': notes,
       };
 }

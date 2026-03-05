@@ -3,7 +3,6 @@ import '../core/colors.dart';
 import '../screens/home_screen.dart';
 import '../screens/calendar_screen.dart';
 import '../screens/insights_screen.dart';
-import '../screens/planner_screen.dart';
 import '../screens/settings_screen.dart';
 
 /// Main navigation shell with 5-tab bottom navigation.
@@ -18,7 +17,7 @@ class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
 
   final List<Widget> _screens = const [
-    HomePage(),
+    HomeScreen(),
     CalendarScreen(),
     SizedBox(), // Log placeholder (center tab)
     InsightsScreen(),
@@ -28,10 +27,7 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _screens,
-      ),
+      body: IndexedStack(index: _selectedIndex, children: _screens),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -56,19 +52,29 @@ class _MainShellState extends State<MainShell> {
             },
             items: const [
               BottomNavigationBarItem(
-                  icon: Icon(Icons.home_filled), label: 'Home'),
+                icon: Icon(Icons.home_filled),
+                label: 'Home',
+              ),
               BottomNavigationBarItem(
-                  icon: Icon(Icons.calendar_today_outlined),
-                  label: 'Calendar'),
+                icon: Icon(Icons.calendar_today_outlined),
+                label: 'Calendar',
+              ),
               BottomNavigationBarItem(
-                icon:
-                    Icon(Icons.add_circle, size: 40, color: AppColors.primaryMuted),
+                icon: Icon(
+                  Icons.add_circle,
+                  size: 40,
+                  color: AppColors.primaryMuted,
+                ),
                 label: 'Log',
               ),
               BottomNavigationBarItem(
-                  icon: Icon(Icons.psychology_outlined), label: 'AI'),
+                icon: Icon(Icons.psychology_outlined),
+                label: 'AI',
+              ),
               BottomNavigationBarItem(
-                  icon: Icon(Icons.settings_outlined), label: 'Settings'),
+                icon: Icon(Icons.settings_outlined),
+                label: 'Settings',
+              ),
             ],
           ),
         ),
@@ -126,11 +132,14 @@ class _MainShellState extends State<MainShell> {
         ),
         child: Icon(icon, color: AppColors.primaryDark),
       ),
-      title: Text(label,
-          style: const TextStyle(
-              fontWeight: FontWeight.w500, color: AppColors.primaryDark)),
-      trailing:
-          const Icon(Icons.chevron_right, color: AppColors.primaryMuted),
+      title: Text(
+        label,
+        style: const TextStyle(
+          fontWeight: FontWeight.w500,
+          color: AppColors.primaryDark,
+        ),
+      ),
+      trailing: const Icon(Icons.chevron_right, color: AppColors.primaryMuted),
       onTap: () => Navigator.pop(context),
     );
   }

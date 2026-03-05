@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../models/user_model.dart';
 import '../models/cycle_log_model.dart';
 import '../models/prediction_model.dart';
 
@@ -11,7 +10,7 @@ class ApiService {
   ApiService._internal();
 
   // Update this to your backend URL (ngrok / local / production)
-  static const String baseUrl = 'http://10.0.2.2:8000';
+  static const String baseUrl = 'http://localhost:8000';
   String? _token;
 
   void setToken(String token) => _token = token;
@@ -45,7 +44,7 @@ class ApiService {
   Future<Map<String, dynamic>> register({
     required String email,
     required String password,
-    String? name,
+    String? fullName,
     String storageMode = 'cloud',
     String storageMode = 'cloud',
     bool isYoungGirlMode = false,
@@ -56,7 +55,7 @@ class ApiService {
       body: jsonEncode({
         'email': email,
         'password': password,
-        if (name != null) 'name': name,
+        'full_name': fullName ?? 'User',
         'storage_mode': storageMode,
       }),
     );
@@ -101,15 +100,14 @@ class ApiService {
       headers: _headers,
       body: jsonEncode(log.toJson()),
     );
-    if (response.statusCode != 200) {
+    if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Failed to add cycle log: ${response.body}');
     }
   }
 
-  Future<List<CycleLogModel>> getCycleLogs(int userId) async {
-  Future<List<CycleLog>> getCycleLogs(int userId) async {
+  Future<List<CycleLogModel>> getCycleLogs() async {
     final response = await http.get(
-      Uri.parse('$baseUrl/cycle/logs/$userId'),
+      Uri.parse('$baseUrl/cycle/logs'),
       headers: _headers,
     );
     if (response.statusCode == 200) {
@@ -122,73 +120,11 @@ class ApiService {
 
   // ── Prediction / Inference ────────────────────────────────────────────
 
-  Future<PredictionModel> predict({
-    required int userId,
-    String storageMode = 'cloud',
-  // ── Behavioral Data ──────────────────────────────────────────────────
-
-  Future<void> addBehavioralData(BehavioralData data) async {
+  Future<PredictionModel> predict() async {
     final response = await http.post(
-      Uri.parse('$baseUrl/behavioral/log'),
+      Uri.parse('$baseUrl/predict/cloud'),
       headers: _headers,
-      body: jsonEncode(data.toJson()),
-    );
-    if (response.statusCode != 200) {
-      throw Exception('Failed to add behavioral data: ${response.body}');
-    }
-  }
-
-  Future<List<BehavioralData>> getBehavioralData(int userId) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/behavioral/logs/$userId'),
-      headers: _headers,
-    );
-    if (response.statusCode == 200) {
-      final list = jsonDecode(response.body) as List;
-      return list.map((j) => BehavioralData.fromJson(j)).toList();
-    }
-    throw Exception('Failed to fetch behavioral data');
-  }
-
-  // ── Travel Data ──────────────────────────────────────────────────────
-
-  Future<void> addTravelData(TravelData data) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/travel/log'),
-      headers: _headers,
-      body: jsonEncode(data.toJson()),
-    );
-    if (response.statusCode != 200) {
-      throw Exception('Failed to add travel data: ${response.body}');
-    }
-  }
-
-  Future<List<TravelData>> getTravelData(int userId) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/travel/logs/$userId'),
-      headers: _headers,
-    );
-    if (response.statusCode == 200) {
-      final list = jsonDecode(response.body) as List;
-      return list.map((j) => TravelData.fromJson(j)).toList();
-    }
-    throw Exception('Failed to fetch travel data');
-  }
-
-  // ── Prediction / Inference ────────────────────────────────────────────
-
-  /// Cloud mode: predict using user_id (data fetched from DB).
-  Future<InferenceResponse> predictCloud({
-    required int userId,
-    bool isYoungGirlMode = false,
-  }) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/predict'),
-      headers: _headers,
-      body: jsonEncode({
-        'user_id': userId,
-        'storage_mode': storageMode,
-      }),
+      body: jsonEncode({'is_young_girl_mode': false}),
     );
     if (response.statusCode == 200) {
       return PredictionModel.fromJson(jsonDecode(response.body));
@@ -232,7 +168,7 @@ class ApiService {
 
   Future<Map<String, dynamic>> getAnalytics() async {
     final response = await http.get(
-      Uri.parse('$baseUrl/analytics'),
+      Uri.parse('$baseUrl/analytics/performance'),
       headers: _headers,
     );
     if (response.statusCode == 200) {
