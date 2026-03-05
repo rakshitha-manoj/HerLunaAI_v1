@@ -1,9 +1,19 @@
 import 'package:flutter/material.dart';
 
-// Your functional imports
+// Your functional imports (Adjust paths if necessary)
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import 'home_screen.dart';
+
+// --- THEME CONSTANTS FOR EXACT VISUAL MATCH ---
+const Color _bgWhite = Color(0xFFF7F6F2);
+const Color _primaryDark = Color(0xFF45384D);
+const Color _primaryMuted = Color(0xFF6E5C77);
+const Color _disabledButton = Color(0xFFB1A6B6);
+const Color _textGray = Color(0xFF8A8290);
+const Color _lightGray = Color(0xFFE4DFE5);
+const Color _errorBg = Color(0xFFFDECEE);
+const Color _errorText = Color(0xFFE53935);
 
 // --- THEME CONSTANTS FOR EXACT VISUAL MATCH ---
 const Color _bgWhite = Color(0xFFF7F6F2);
