@@ -57,6 +57,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
+  DateTime _focusedMonth = DateTime.now();
+  DateTime? _selectedDay;
+  bool _showLogSheet = false;
+
+  // Mock logging state
+  bool _isPeriod = false;
+  double _flowLevel = 1;
+  double _energyLevel = 3;
+  double _stressLevel = 2;
+
   @override
   Widget build(BuildContext context) {
     final normalizedSelected = _normalizeDate(_selectedDay);
