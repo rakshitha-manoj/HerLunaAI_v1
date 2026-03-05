@@ -230,6 +230,32 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const Text("Current Phase", style: TextStyle(color: Colors.white70, fontSize: 14)),
+          Text("$_phase Phase", style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+          AppSpacing.verticalSmall,
+          Row(
+            children: [
+              const Icon(Icons.calendar_today, color: AppColors.accentMint, size: 16),
+              const SizedBox(width: 8),
+              Text("Day $_dayInCycle of $_cycleLength", style: const TextStyle(color: Colors.white)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInsightCard({required String title, required String description, required IconData icon, required Color color}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.5)),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(backgroundColor: color, child: Icon(icon, color: AppColors.primaryDark)),
           Row(
             children: [
               Icon(icon, size: 16, color: _primaryMuted),
