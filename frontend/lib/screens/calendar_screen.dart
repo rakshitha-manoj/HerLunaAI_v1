@@ -8,6 +8,10 @@ import 'insights_screen.dart';
 import 'planner_screen.dart';
 import 'settings_screen.dart';
 
+// Services
+import '../services/api_service.dart';
+import '../services/storage_service.dart';
+
 // --- THEME CONSTANTS FOR EXACT VISUAL MATCH ---
 const Color _bgWhite = Color(0xFFF7F6F2);
 const Color _primaryDark = Color(0xFF45384D);
@@ -31,12 +35,72 @@ class _CalendarScreenState extends State<CalendarScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = DateTime.now();
 
-  // Mock Database for Logs: Maps a Date (ignoring time) to a Log Map
+  // Database for Logs: Maps a Date (ignoring time) to a Log Map
   final Map<DateTime, Map<String, dynamic>> _dailyLogs = {};
 
   // Helper to normalize dates for map keys
   DateTime _normalizeDate(DateTime date) {
     return DateTime(date.year, date.month, date.day);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLogsFromApi();
+  }
+
+  Future<void> _loadLogsFromApi() async {
+    try {
+      final api = ApiService();
+      if (!api.isAuthenticated) {
+        final token = await StorageService.getToken();
+        if (token != null) api.setToken(token);
+      }
+      if (!api.isAuthenticated) return;
+      final logs = await api.getDailyLogs();
+      if (!mounted) return;
+      setState(() {
+        for (final log in logs) {
+          final dateStr = log['date'] as String?;
+          if (dateStr != null) {
+            final date = DateTime.tryParse(dateStr);
+            if (date != null) {
+              _dailyLogs[_normalizeDate(date)] = {
+                'onPeriod': log['on_period'] ?? false,
+                'flow': log['flow_level'] ?? '',
+                'energy': log['energy_level'] ?? '',
+                'stress': log['stress_level'] ?? '',
+                'notes': log['notes'] ?? '',
+              };
+            }
+          }
+        }
+      });
+    } catch (_) {
+      // Silently fail — show empty state
+    }
+  }
+
+  Future<void> _submitLogToApi(Map<String, dynamic> logData) async {
+    try {
+      final api = ApiService();
+      if (!api.isAuthenticated) {
+        final token = await StorageService.getToken();
+        if (token != null) api.setToken(token);
+      }
+      if (!api.isAuthenticated) return;
+      final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay);
+      await api.submitDailyLog(
+        date: dateStr,
+        onPeriod: logData['onPeriod'] ?? false,
+        flowLevel: logData['flow'] ?? 'MEDIUM',
+        energyLevel: logData['energy'] ?? 'Moderate',
+        stressLevel: logData['stress'] ?? 'Mild',
+        notes: logData['notes'] ?? '',
+      );
+    } catch (_) {
+      // Non-critical — local state already updated
+    }
   }
 
   void _openLogModal() {
@@ -51,6 +115,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           setState(() {
             _dailyLogs[_normalizeDate(_selectedDay)] = logData;
           });
+          _submitLogToApi(logData);
           Navigator.pop(context);
         },
       ),

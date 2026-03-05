@@ -3,7 +3,17 @@ import 'package:flutter/material.dart';
 // Your functional imports (Adjust paths if necessary)
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
-import '../navigation/main_shell.dart';
+import 'home_screen.dart';
+
+// --- THEME CONSTANTS FOR EXACT VISUAL MATCH ---
+const Color _bgWhite = Color(0xFFF7F6F2);
+const Color _primaryDark = Color(0xFF45384D);
+const Color _primaryMuted = Color(0xFF6E5C77);
+const Color _disabledButton = Color(0xFFB1A6B6);
+const Color _textGray = Color(0xFF8A8290);
+const Color _lightGray = Color(0xFFE4DFE5);
+const Color _errorBg = Color(0xFFFDECEE);
+const Color _errorText = Color(0xFFE53935);
 
 // --- THEME CONSTANTS FOR EXACT VISUAL MATCH ---
 const Color _bgWhite = Color(0xFFF7F6F2);
@@ -66,12 +76,13 @@ class _LoginScreenState extends State<LoginScreen> {
       await StorageService.saveToken(result['access_token']);
       await StorageService.saveUserId(result['user']['id']);
       await StorageService.saveEmail(_emailController.text.trim());
+      await StorageService.saveName(result['user']['full_name'] ?? '');
       await StorageService.setOnboardingComplete(true);
 
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const MainShell()),
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
         (_) => false,
       );
     } catch (e) {

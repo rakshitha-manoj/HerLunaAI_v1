@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
 
-// Your functional imports (Adjust paths if necessary)
-import '../core/colors.dart';
-import '../core/spacing.dart';
+// Functional imports
+import '../services/api_service.dart';
+import '../services/storage_service.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
 
@@ -32,6 +32,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
+  // Data collected from steps 3-5
+  String? _selectedAge;
+  String? _selectedActivity;
+  bool _isLocalStorage = true;
+  DateTime? _rangeStart;
+  DateTime? _rangeEnd;
+  bool _isIrregular = false;
+  bool _isRegistering = false;
+
   @override
   void dispose() {
     _pageController.dispose();
@@ -47,6 +56,68 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       duration: const Duration(milliseconds: 400),
       curve: Curves.easeInOut,
     );
+  }
+
+  Future<void> _completeOnboarding() async {
+    if (_isRegistering) return;
+    setState(() => _isRegistering = true);
+
+    try {
+      final api = ApiService();
+      final result = await api.register(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+        fullName: _nameController.text.trim().isNotEmpty
+            ? _nameController.text.trim()
+            : 'User',
+        ageRange: _selectedAge ?? '18-24',
+        activityLevel: _selectedActivity ?? 'Student',
+        storageMode: _isLocalStorage ? 'local' : 'cloud',
+        cycleVariabilityKnown: _isIrregular,
+      );
+
+      await StorageService.saveToken(result['access_token']);
+      await StorageService.saveUserId(result['user']['id']);
+      await StorageService.saveEmail(_emailController.text.trim());
+      await StorageService.saveName(
+          _nameController.text.trim().isNotEmpty
+              ? _nameController.text.trim()
+              : 'User');
+      await StorageService.saveStorageMode(
+          _isLocalStorage ? 'local' : 'cloud');
+      await StorageService.saveAgeRange(_selectedAge ?? '18-24');
+      await StorageService.saveActivity(_selectedActivity ?? 'Student');
+      await StorageService.setOnboardingComplete(true);
+
+      // If user selected a period range, log it as a cycle log
+      if (_rangeStart != null) {
+        try {
+          final bleedingDays = _rangeEnd != null
+              ? _rangeEnd!.difference(_rangeStart!).inDays + 1
+              : null;
+          await api.addCycleLog(
+            periodStart: _rangeStart!.toIso8601String().split('T')[0],
+            bleedingDays: bleedingDays,
+          );
+        } catch (_) {
+          // Non-critical — don't block navigation
+        }
+      }
+
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isRegistering = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Registration failed: $e'),
+            backgroundColor: Colors.redAccent),
+      );
+    }
   }
 
   @override
@@ -72,16 +143,23 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     emailController: _emailController,
                     passwordController: _passwordController,
                   ),
-                  _Step3AgeActivity(onNext: _nextPage),
-                  _Step4Storage(onNext: _nextPage),
+                  _Step3AgeActivity(
+                    onNext: _nextPage,
+                    onAgeSelected: (val) => _selectedAge = val,
+                    onActivitySelected: (val) => _selectedActivity = val,
+                  ),
+                  _Step4Storage(
+                    onNext: _nextPage,
+                    onStorageSelected: (isLocal) => _isLocalStorage = isLocal,
+                  ),
                   _Step5CycleBaseline(
-                    // Simple navigation to home page
-                    onFinish: () => Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const HomeScreen(),
-                      ),
-                    ),
+                    onFinish: _completeOnboarding,
+                    isRegistering: _isRegistering,
+                    onRangeChanged: (start, end) {
+                      _rangeStart = start;
+                      _rangeEnd = end;
+                    },
+                    onIrregularChanged: (val) => _isIrregular = val,
                   ),
                 ],
               ),
@@ -441,7 +519,9 @@ class _Step2BasicInfoState extends State<_Step2BasicInfo> {
 // ==========================================
 class _Step3AgeActivity extends StatefulWidget {
   final VoidCallback onNext;
-  const _Step3AgeActivity({required this.onNext});
+  final ValueChanged<String> onAgeSelected;
+  final ValueChanged<String> onActivitySelected;
+  const _Step3AgeActivity({required this.onNext, required this.onAgeSelected, required this.onActivitySelected});
 
   @override
   State<_Step3AgeActivity> createState() => _Step3AgeActivityState();
@@ -489,7 +569,10 @@ class _Step3AgeActivityState extends State<_Step3AgeActivity> {
           children: ["Under 18", "18-24", "25-34", "35-44", "45+"].map((age) {
             bool isSelected = _selectedAge == age;
             return GestureDetector(
-              onTap: () => setState(() => _selectedAge = age),
+              onTap: () {
+                setState(() => _selectedAge = age);
+                widget.onAgeSelected(age);
+              },
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 20,
@@ -546,7 +629,10 @@ class _Step3AgeActivityState extends State<_Step3AgeActivity> {
   Widget _buildActivityCard(String title, IconData icon) {
     bool isSelected = _selectedActivity == title;
     return GestureDetector(
-      onTap: () => setState(() => _selectedActivity = title),
+      onTap: () {
+        setState(() => _selectedActivity = title);
+        widget.onActivitySelected(title);
+      },
       child: Container(
         decoration: BoxDecoration(
           color: isSelected ? _primaryMuted : Colors.white,
@@ -584,7 +670,8 @@ class _Step3AgeActivityState extends State<_Step3AgeActivity> {
 // ==========================================
 class _Step4Storage extends StatefulWidget {
   final VoidCallback onNext;
-  const _Step4Storage({required this.onNext});
+  final ValueChanged<bool> onStorageSelected;
+  const _Step4Storage({required this.onNext, required this.onStorageSelected});
 
   @override
   State<_Step4Storage> createState() => _Step4StorageState();
@@ -609,7 +696,10 @@ class _Step4StorageState extends State<_Step4Storage> {
         ),
         const SizedBox(height: 32),
         GestureDetector(
-          onTap: () => setState(() => _isLocalSelected = false),
+          onTap: () {
+            setState(() => _isLocalSelected = false);
+            widget.onStorageSelected(false);
+          },
           child: _buildStorageCard(
             title: "Cloud Mode",
             desc:
@@ -620,7 +710,10 @@ class _Step4StorageState extends State<_Step4Storage> {
         ),
         const SizedBox(height: 16),
         GestureDetector(
-          onTap: () => setState(() => _isLocalSelected = true),
+          onTap: () {
+            setState(() => _isLocalSelected = true);
+            widget.onStorageSelected(true);
+          },
           child: _buildStorageCard(
             title: "Local Mode",
             desc:
@@ -693,7 +786,10 @@ class _Step4StorageState extends State<_Step4Storage> {
 // ==========================================
 class _Step5CycleBaseline extends StatefulWidget {
   final VoidCallback onFinish;
-  const _Step5CycleBaseline({required this.onFinish});
+  final bool isRegistering;
+  final Function(DateTime?, DateTime?) onRangeChanged;
+  final ValueChanged<bool> onIrregularChanged;
+  const _Step5CycleBaseline({required this.onFinish, required this.isRegistering, required this.onRangeChanged, required this.onIrregularChanged});
 
   @override
   State<_Step5CycleBaseline> createState() => _Step5CycleBaselineState();
@@ -709,7 +805,7 @@ class _Step5CycleBaselineState extends State<_Step5CycleBaseline> {
   Widget build(BuildContext context) {
     return _ScrollableStepWrapper(
       bottomButton: ElevatedButton(
-        onPressed: _rangeStart == null ? null : widget.onFinish,
+        onPressed: (_rangeStart == null || widget.isRegistering) ? null : widget.onFinish,
         style: ElevatedButton.styleFrom(
           backgroundColor: _primaryMuted,
           disabledBackgroundColor: _disabledButton,
@@ -719,14 +815,20 @@ class _Step5CycleBaselineState extends State<_Step5CycleBaseline> {
           ),
           elevation: 0,
         ),
-        child: const Text(
-          "Finish Setup",
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        child: widget.isRegistering
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+              )
+            : const Text(
+                "Finish Setup",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
       ),
       children: [
         const Text(
@@ -779,7 +881,10 @@ class _Step5CycleBaselineState extends State<_Step5CycleBaseline> {
               ),
               Switch(
                 value: isIrregular,
-                onChanged: (val) => setState(() => isIrregular = val),
+                onChanged: (val) {
+                  setState(() => isIrregular = val);
+                  widget.onIrregularChanged(val);
+                },
                 activeColor: _primaryMuted,
                 inactiveTrackColor: _lightGray,
                 inactiveThumbColor: Colors.white,
@@ -867,6 +972,7 @@ class _Step5CycleBaselineState extends State<_Step5CycleBaseline> {
                 _rangeEnd = end;
                 _focusedDay = focusedDay;
               });
+              widget.onRangeChanged(start, end);
             },
             onPageChanged: (focusedDay) =>
                 setState(() => _focusedDay = focusedDay),

@@ -1,7 +1,5 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../models/cycle_log_model.dart';
-import '../models/prediction_model.dart';
 
 /// Singleton API Service for communicating with HerLuna backend.
 class ApiService {
@@ -16,38 +14,24 @@ class ApiService {
   void setToken(String token) => _token = token;
   void clearToken() => _token = null;
   bool get isAuthenticated => _token != null;
-import '../models/user.dart';
-import '../models/cycle_log.dart';
-import '../models/behavioral_data.dart';
-import '../models/travel_data.dart';
-import '../models/inference_response.dart';
-
-/// API Service for communicating with HerLuna backend.
-/// Handles both cloud and local mode request formatting.
-class ApiService {
-  // Change this to your backend URL (ngrok, local, or production)
-  static const String baseUrl = 'http://10.0.2.2:8000';
-  String? _token;
-
-  void setToken(String token) {
-    _token = token;
-  }
 
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
         if (_token != null) 'Authorization': 'Bearer $_token',
       };
 
-  // ── Auth ──────────────────────────────────────────────────────────────
   // ── Auth ────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> register({
     required String email,
     required String password,
-    String? fullName,
-    String storageMode = 'cloud',
+    required String fullName,
+    String ageRange = '19-25',
+    String activityLevel = 'moderate',
     String storageMode = 'cloud',
     bool isYoungGirlMode = false,
+    int? averageCycleLength,
+    bool cycleVariabilityKnown = false,
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/auth/register'),
@@ -55,16 +39,17 @@ class ApiService {
       body: jsonEncode({
         'email': email,
         'password': password,
-        'full_name': fullName ?? 'User',
+        'full_name': fullName,
+        'age_range': ageRange,
+        'activity_level': activityLevel,
         'storage_mode': storageMode,
+        'is_young_girl_mode': isYoungGirlMode,
+        if (averageCycleLength != null)
+          'average_cycle_length': averageCycleLength,
+        'cycle_variability_known': cycleVariabilityKnown,
       }),
     );
     if (response.statusCode == 200 || response.statusCode == 201) {
-        'storage_mode': storageMode,
-        'is_young_girl_mode': isYoungGirlMode,
-      }),
-    );
-    if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       _token = data['access_token'];
       return data;
@@ -89,56 +74,99 @@ class ApiService {
     throw Exception('Login failed: ${response.body}');
   }
 
-  // ── Cycle Logs ────────────────────────────────────────────────────────
-
-  Future<void> addCycleLog(CycleLogModel log) async {
   // ── Cycle Logs ──────────────────────────────────────────────────────
 
-  Future<void> addCycleLog(CycleLog log) async {
+  Future<Map<String, dynamic>> addCycleLog({
+    required String periodStart,
+    int? bleedingDays,
+    String? flowIntensity,
+    List<String>? symptoms,
+    String? notes,
+  }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/cycle/log'),
       headers: _headers,
-      body: jsonEncode(log.toJson()),
+      body: jsonEncode({
+        'period_start': periodStart,
+        if (bleedingDays != null) 'bleeding_days': bleedingDays,
+        if (flowIntensity != null) 'flow_intensity': flowIntensity,
+        if (symptoms != null) 'symptoms': symptoms,
+        if (notes != null) 'notes': notes,
+      }),
     );
-    if (response.statusCode != 200 && response.statusCode != 201) {
-      throw Exception('Failed to add cycle log: ${response.body}');
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body);
     }
+    throw Exception('Failed to add cycle log: ${response.body}');
   }
 
-  Future<List<CycleLogModel>> getCycleLogs() async {
+  Future<List<Map<String, dynamic>>> getCycleLogs() async {
     final response = await http.get(
       Uri.parse('$baseUrl/cycle/logs'),
       headers: _headers,
     );
     if (response.statusCode == 200) {
       final list = jsonDecode(response.body) as List;
-      return list.map((j) => CycleLogModel.fromJson(j)).toList();
-      return list.map((j) => CycleLog.fromJson(j)).toList();
+      return list.cast<Map<String, dynamic>>();
     }
     throw Exception('Failed to fetch cycle logs');
   }
 
-  // ── Prediction / Inference ────────────────────────────────────────────
+  // ── Daily Logs (energy, stress, period, notes) ──────────────────────
 
-  Future<PredictionModel> predict() async {
+  Future<Map<String, dynamic>> submitDailyLog({
+    required String date,
+    required bool onPeriod,
+    String flowLevel = 'MEDIUM',
+    required String energyLevel,
+    required String stressLevel,
+    String notes = '',
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/daily/log'),
+      headers: _headers,
+      body: jsonEncode({
+        'date': date,
+        'on_period': onPeriod,
+        'flow_level': flowLevel,
+        'energy_level': energyLevel,
+        'stress_level': stressLevel,
+        'notes': notes,
+      }),
+    );
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body);
+    }
+    throw Exception('Failed to submit daily log: ${response.body}');
+  }
+
+  Future<List<Map<String, dynamic>>> getDailyLogs() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/daily/logs'),
+      headers: _headers,
+    );
+    if (response.statusCode == 200) {
+      final list = jsonDecode(response.body) as List;
+      return list.cast<Map<String, dynamic>>();
+    }
+    throw Exception('Failed to fetch daily logs');
+  }
+
+  // ── Prediction / Inference ──────────────────────────────────────────
+
+  Future<Map<String, dynamic>> predict({bool isYoungGirlMode = false}) async {
     final response = await http.post(
       Uri.parse('$baseUrl/predict/cloud'),
       headers: _headers,
-      body: jsonEncode({'is_young_girl_mode': false}),
+      body: jsonEncode({'is_young_girl_mode': isYoungGirlMode}),
     );
     if (response.statusCode == 200) {
-      return PredictionModel.fromJson(jsonDecode(response.body));
-        'storage_mode': 'cloud',
-        'is_young_girl_mode': isYoungGirlMode,
-      }),
-    );
-    if (response.statusCode == 200) {
-      return InferenceResponse.fromJson(jsonDecode(response.body));
+      return jsonDecode(response.body);
     }
     throw Exception('Prediction failed: ${response.body}');
   }
 
-  // ── Feedback ──────────────────────────────────────────────────────────
+  // ── Feedback ────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> submitFeedback({
     required double predictedFatigue,
@@ -164,7 +192,7 @@ class ApiService {
     throw Exception('Feedback failed: ${response.body}');
   }
 
-  // ── Analytics ─────────────────────────────────────────────────────────
+  // ── Analytics ───────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getAnalytics() async {
     final response = await http.get(
@@ -175,50 +203,5 @@ class ApiService {
       return jsonDecode(response.body);
     }
     throw Exception('Analytics fetch failed: ${response.body}');
-  /// Local mode: send data snapshot, backend does NOT store.
-  Future<InferenceResponse> predictLocal({
-    required List<CycleLog> cycleLogs,
-    required List<BehavioralData> behavioralData,
-    required List<TravelData> travelData,
-    bool isYoungGirlMode = false,
-  }) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/predict'),
-      headers: _headers,
-      body: jsonEncode({
-        'storage_mode': 'local',
-        'is_young_girl_mode': isYoungGirlMode,
-        'cycle_logs': cycleLogs.map((c) => c.toJson()).toList(),
-        'behavioral_data': behavioralData.map((b) => b.toJson()).toList(),
-        'travel_data': travelData.map((t) => t.toJson()).toList(),
-      }),
-    );
-    if (response.statusCode == 200) {
-      return InferenceResponse.fromJson(jsonDecode(response.body));
-    }
-    throw Exception('Prediction failed: ${response.body}');
-  }
-
-  // ── Healthcare Locator ────────────────────────────────────────────────
-
-  Future<List<Map<String, dynamic>>> findNearbyHealthcare({
-    required double latitude,
-    required double longitude,
-    int radius = 5000,
-  }) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/healthcare/nearby'),
-      headers: _headers,
-      body: jsonEncode({
-        'latitude': latitude,
-        'longitude': longitude,
-        'radius': radius,
-      }),
-    );
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return List<Map<String, dynamic>>.from(data['locations'] ?? []);
-    }
-    throw Exception('Healthcare search failed: ${response.body}');
   }
 }

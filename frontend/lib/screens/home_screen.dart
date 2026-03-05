@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
 // Import your respective screen files here!
-// (Make sure these files exist and the paths are correct)
 import 'calendar_screen.dart';
 import 'insights_screen.dart';
 import 'planner_screen.dart';
 import 'settings_screen.dart';
+
+// Services
+import '../services/api_service.dart';
+import '../services/storage_service.dart';
 
 // --- THEME CONSTANTS FOR EXACT VISUAL MATCH ---
 const Color _bgWhite = Color(0xFFF7F6F2);
@@ -29,6 +32,114 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   // Home is index 0
   final int _currentIndex = 0;
+
+  // Live data fields
+  String _userName = '';
+  String _phase = 'Menstrual';
+  int _cycleDay = 1;
+  String _confidenceLevel = 'Moderate';
+  String _confidenceSubtitle = 'Based on recent logs';
+  String _nextWindow = 'Apr 1 — 5';
+  String _nextWindowSubtitle = 'Estimated range';
+  String _observationText = 'Your hormone levels are at their lowest, which can result in significant fatigue and a natural pull toward introspection.';
+  String _expectationText = 'Over the next few days, you might experience lingering physical discomfort or fluctuating moods as your body begins its renewal process.';
+  String _chartNote = 'Cycle length variability has decreased by 12% recently.';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    // Load user name from storage
+    final name = await StorageService.getName();
+    if (name != null && mounted) {
+      setState(() => _userName = name);
+    }
+
+    // Load prediction from API
+    try {
+      final api = ApiService();
+      if (!api.isAuthenticated) {
+        final token = await StorageService.getToken();
+        if (token != null) api.setToken(token);
+      }
+      if (api.isAuthenticated) {
+        final pred = await api.predict();
+        if (!mounted) return;
+        _applyPrediction(pred);
+      }
+    } catch (_) {
+      // Silently fail — show placeholder data
+    }
+  }
+
+  void _applyPrediction(Map<String, dynamic> data) {
+    final physio = data['physiological_state'] as Map<String, dynamic>? ?? {};
+    final perf = data['performance_state'] as Map<String, dynamic>? ?? {};
+    final risk = data['risk_state'] as Map<String, dynamic>? ?? {};
+    final meta = data['meta'] as Map<String, dynamic>? ?? {};
+    final phases = physio['phase_probability'] as Map<String, dynamic>? ?? {};
+    final guidance = meta['guidance'] as List? ?? [];
+
+    // Determine dominant phase
+    String dominantPhase = 'Menstrual';
+    double maxProb = 0;
+    phases.forEach((key, value) {
+      if (value is num && value > maxProb) {
+        maxProb = value.toDouble();
+        dominantPhase = key[0].toUpperCase() + key.substring(1);
+      }
+    });
+
+    // Cycle day
+    final dayInCycle = physio['estimated_day_in_cycle'] ?? 1;
+
+    // Confidence
+    final confidence = (meta['confidence_score'] ?? 0.0) as num;
+    String confLevel = 'Low';
+    if (confidence >= 0.7) confLevel = 'High';
+    else if (confidence >= 0.4) confLevel = 'Moderate';
+
+    // Observation from guidance
+    String observation = _observationText;
+    if (guidance.isNotEmpty) {
+      final g = guidance[0];
+      observation = g is Map ? (g['suggestion'] ?? observation) : observation;
+    }
+
+    // Expectation from guidance
+    String expectation = _expectationText;
+    if (guidance.length > 1) {
+      final g = guidance[1];
+      expectation = g is Map ? (g['suggestion'] ?? expectation) : expectation;
+    }
+
+    // Chart note from trend flags
+    final trends = meta['trend_flags'] as List? ?? [];
+    String chartNote = _chartNote;
+    if (trends.isNotEmpty) {
+      chartNote = trends.first.toString();
+    }
+
+    setState(() {
+      _phase = dominantPhase;
+      _cycleDay = dayInCycle is int ? dayInCycle : 1;
+      _confidenceLevel = confLevel;
+      _confidenceSubtitle = 'Score: ${(confidence * 100).toStringAsFixed(0)}%';
+      _observationText = observation;
+      _expectationText = expectation;
+      _chartNote = chartNote;
+    });
+  }
+
+  String _greeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good Morning';
+    if (hour < 17) return 'Good Afternoon';
+    return 'Good Evening';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -68,9 +179,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          "Good Evening, rr",
-          style: TextStyle(
+        Text(
+          "${_greeting()}, ${_userName.isNotEmpty ? _userName : 'there'}",
+          style: const TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.w800,
             color: _primaryDark,
@@ -128,9 +239,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  "Menstrual Phase",
-                  style: TextStyle(
+                Text(
+                  "$_phase Phase",
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 32,
                     fontWeight: FontWeight.w800,
@@ -147,9 +258,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     letterSpacing: 1.5,
                   ),
                 ),
-                const Text(
-                  "1",
-                  style: TextStyle(
+                Text(
+                  "$_cycleDay",
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 64,
                     fontWeight: FontWeight.w800,
@@ -163,9 +274,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     color: Colors.white.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Text(
-                    "On this first day of your cycle, your hormone levels are at their lowest, which can result in significant fatigue and a natural pull toward introspection. As a student, you may find your cognitive stamina feels limited today, making it an ideal time to prioritize restorative rest over rigorous academic demands.",
-                    style: TextStyle(
+                  child: Text(
+                    _observationText,
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 15,
                       height: 1.5,
@@ -191,8 +302,8 @@ class _HomeScreenState extends State<HomeScreen> {
           child: _buildSmallCard(
             icon: Icons.verified_user_outlined,
             title: "CONFIDENCE",
-            value: "Moderate",
-            subtitle: "Based on recent logs",
+            value: _confidenceLevel,
+            subtitle: _confidenceSubtitle,
           ),
         ),
         const SizedBox(width: 16),
@@ -200,8 +311,8 @@ class _HomeScreenState extends State<HomeScreen> {
           child: _buildSmallCard(
             icon: Icons.calendar_today_outlined,
             title: "NEXT WINDOW",
-            value: "Apr 1 — 5",
-            subtitle: "Estimated range",
+            value: _nextWindow,
+            subtitle: _nextWindowSubtitle,
           ),
         ),
       ],
@@ -230,32 +341,6 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Current Phase", style: TextStyle(color: Colors.white70, fontSize: 14)),
-          Text("$_phase Phase", style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-          AppSpacing.verticalSmall,
-          Row(
-            children: [
-              const Icon(Icons.calendar_today, color: AppColors.accentMint, size: 16),
-              const SizedBox(width: 8),
-              Text("Day $_dayInCycle of $_cycleLength", style: const TextStyle(color: Colors.white)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInsightCard({required String title, required String description, required IconData icon, required Color color}) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.5)),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(backgroundColor: color, child: Icon(icon, color: AppColors.primaryDark)),
           Row(
             children: [
               Icon(icon, size: 16, color: _primaryMuted),
@@ -318,9 +403,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
-            "Over the next few days, you might experience lingering physical discomfort or fluctuating moods as your body begins its renewal process. To manage this effectively, focus on staying hydrated and choosing gentle, low-pressure study environments that honor your body's need for a slower pace.",
-            style: TextStyle(
+          Text(
+            _expectationText,
+            style: const TextStyle(
               color: _expectTextDark,
               fontSize: 16,
               height: 1.5,
@@ -392,9 +477,9 @@ class _HomeScreenState extends State<HomeScreen> {
             child: CustomPaint(painter: _SparklinePainter()),
           ),
           const SizedBox(height: 24),
-          const Text(
-            "Cycle length variability has decreased by 12% recently.",
-            style: TextStyle(color: _textGray, fontSize: 13, height: 1.4),
+          Text(
+            _chartNote,
+            style: const TextStyle(color: _textGray, fontSize: 13, height: 1.4),
           ),
         ],
       ),

@@ -4,7 +4,7 @@ import '../core/constants.dart';
 import '../core/spacing.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
-import '../navigation/main_shell.dart';
+import 'home_screen.dart';
 import 'onboarding_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -33,7 +33,7 @@ class _SplashScreenState extends State<SplashScreen> {
       ApiService().setToken(token);
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const MainShell()),
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
       );
     } else {
       Navigator.pushReplacement(

@@ -31,6 +31,24 @@ class User(Base):
     travel_data = relationship("TravelData", back_populates="user")
     model_outputs = relationship("ModelOutput", back_populates="user")
     personal_model = relationship("PersonalModel", back_populates="user", uselist=False)
+    daily_logs = relationship("DailyLog", back_populates="user")
+
+
+class DailyLog(Base):
+    """Daily log entries for energy, stress, period status and notes."""
+    __tablename__ = "daily_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    date = Column(Date, nullable=False)
+    on_period = Column(Boolean, default=False)
+    flow_level = Column(String, nullable=True)
+    energy_level = Column(String, nullable=True)
+    stress_level = Column(String, nullable=True)
+    notes = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User", back_populates="daily_logs")
 
 
 class CycleLog(Base):
