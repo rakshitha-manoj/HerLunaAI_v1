@@ -39,6 +39,7 @@ from routes.predict import router as predict_router
 from routes.healthcare import router as healthcare_router
 from routes.feedback import router as feedback_router
 from routes.analytics import router as analytics_router
+from routes.daily_log import router as daily_log_router
 
 app = FastAPI(
     title="HerLuna API",
@@ -112,11 +113,14 @@ app.include_router(predict_router, prefix="/predict", tags=["Prediction / Infere
 app.include_router(healthcare_router, prefix="/healthcare", tags=["Healthcare Locator"])
 app.include_router(feedback_router, tags=["Feedback & Calibration"])
 app.include_router(analytics_router, prefix="/analytics", tags=["Analytics"])
+app.include_router(daily_log_router, prefix="/daily", tags=["Daily Logs"])
 
 
 @app.on_event("startup")
 def on_startup():
     """Create all database tables on startup."""
+    # Explicit import to ensure all models are registered with Base.metadata
+    import models  # noqa: F401
     Base.metadata.create_all(bind=engine)
     logger.info("HerLuna API v2.0.0 started | environment=%s", settings.ENVIRONMENT)
 

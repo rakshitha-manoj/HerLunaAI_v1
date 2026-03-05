@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 
 from database import get_db
 from models import User
-from schemas import UserCreate, UserLogin, UserResponse, TokenResponse
+from schemas import UserCreate, UserLogin, UserResponse, TokenResponse, map_frontend_age_range, map_frontend_activity
 from config import settings
 
 router = APIRouter()
@@ -87,12 +87,16 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
             detail="Email already registered",
         )
 
+    # Map frontend values to backend enums
+    mapped_age = map_frontend_age_range(str(user_data.age_range))
+    mapped_activity = map_frontend_activity(str(user_data.activity_level))
+
     user = User(
         email=user_data.email,
         password_hash=pwd_context.hash(user_data.password),
         full_name=user_data.full_name,
-        age_range=user_data.age_range.value,
-        activity_level=user_data.activity_level.value,
+        age_range=mapped_age,
+        activity_level=mapped_activity,
         storage_mode=user_data.storage_mode,
         is_young_girl_mode=user_data.is_young_girl_mode,
         average_cycle_length=user_data.average_cycle_length,

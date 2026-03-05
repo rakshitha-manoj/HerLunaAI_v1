@@ -51,8 +51,8 @@ class UserCreate(BaseModel):
     email: str
     password: str
     full_name: str
-    age_range: AgeRange = AgeRange.YOUNG_ADULT
-    activity_level: ActivityLevel = ActivityLevel.MODERATE
+    age_range: str = "19-25"
+    activity_level: str = "moderate"
     storage_mode: str = "cloud"
     is_young_girl_mode: bool = False
     average_cycle_length: Optional[int] = Field(
@@ -403,3 +403,58 @@ class AnalyticsResponse(BaseModel):
     total_anomalies: int = 0
     average_readiness: float = 0.0
     personal_model: Optional[PersonalModelResponse] = None
+
+
+# ── Daily Logs (Frontend Calendar Tracking) ──────────────────────────────────
+
+class DailyLogCreate(BaseModel):
+    """Daily log from frontend calendar screen.
+    Energy/stress stored as text levels matching frontend UI."""
+    date: date
+    on_period: bool = False
+    flow_level: Optional[str] = None
+    energy_level: Optional[str] = None
+    stress_level: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class DailyLogResponse(BaseModel):
+    id: int
+    user_id: int
+    date: date
+    on_period: bool
+    flow_level: Optional[str]
+    energy_level: Optional[str]
+    stress_level: Optional[str]
+    notes: Optional[str]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ── Frontend-to-Backend Mapping Helpers ──────────────────────────────────────
+
+def map_frontend_age_range(frontend_value: str) -> str:
+    """Map frontend age range labels to backend AgeRange enum values."""
+    mapping = {
+        "Under 18": "13-18",
+        "18-24": "19-25",
+        "25-34": "26-35",
+        "35-44": "36-45",
+        "45+": "46+",
+    }
+    return mapping.get(frontend_value, "19-25")
+
+
+def map_frontend_activity(frontend_value: str) -> str:
+    """Map frontend activity pattern labels to backend ActivityLevel enum values."""
+    mapping = {
+        "Student": "moderate",
+        "Athlete": "high_performance",
+        "Working\nProfessional": "moderate",
+        "Working Professional": "moderate",
+        "Mixed Routine": "moderate",
+    }
+    return mapping.get(frontend_value, "moderate")
+

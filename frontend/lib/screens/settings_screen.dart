@@ -5,6 +5,12 @@ import 'home_screen.dart';
 import 'calendar_screen.dart';
 import 'insights_screen.dart';
 import 'planner_screen.dart';
+import 'splash_screen.dart';
+import 'onboarding_screen.dart';
+
+// Services
+import '../services/api_service.dart';
+import '../services/storage_service.dart';
 
 // --- THEME CONSTANTS FOR EXACT VISUAL MATCH ---
 const Color _bgWhite = Color(0xFFF7F6F2);
@@ -29,6 +35,69 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _periodReminders = true;
   bool _loggingReminders = true;
   bool _cycleInsights = true;
+
+  // Profile Data (loaded from storage)
+  String _name = '';
+  String _email = '';
+  String _ageRange = '';
+  String _activity = '';
+  String _storageMode = 'Local Only';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final name = await StorageService.getName();
+    final email = await StorageService.getEmail();
+    final age = await StorageService.getAgeRange();
+    final activity = await StorageService.getActivity();
+    final mode = await StorageService.getStorageMode();
+    if (!mounted) return;
+    setState(() {
+      _name = name ?? '';
+      _email = email ?? '';
+      _ageRange = age ?? '';
+      _activity = activity ?? '';
+      _storageMode = mode == 'cloud' ? 'Cloud Sync' : 'Local Only';
+    });
+  }
+
+  Future<void> _logout() async {
+    ApiService().clearToken();
+    await StorageService.clearAll();
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const SplashScreen()),
+    );
+  }
+
+  Future<void> _clearLocalData() async {
+    await StorageService.clearAll();
+    ApiService().clearToken();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Local data cleared'), backgroundColor: Color(0xFF6E5C77)),
+    );
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const SplashScreen()),
+    );
+  }
+
+  Future<void> _resetOnboarding() async {
+    await StorageService.setOnboardingComplete(false);
+    ApiService().clearToken();
+    await StorageService.clearAll();
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -131,25 +200,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildSettingsTile(
             icon: Icons.person_outline,
             title: "Name",
-            trailingText: "rr",
+            trailingText: _name.isNotEmpty ? _name : '—',
           ),
           const SizedBox(height: 24),
           _buildSettingsTile(
             icon: Icons.mail_outline,
             title: "Email",
-            trailingText: "r",
+            trailingText: _email.isNotEmpty ? _email : '—',
           ),
           const SizedBox(height: 24),
           _buildSettingsTile(
             icon: Icons.show_chart,
             title: "Age Range",
-            trailingText: "18-24",
+            trailingText: _ageRange.isNotEmpty ? _ageRange : '—',
           ),
           const SizedBox(height: 24),
           _buildSettingsTile(
             icon: Icons.show_chart,
             title: "Activity Pattern",
-            trailingText: "Student",
+            trailingText: _activity.isNotEmpty ? _activity : '—',
           ),
         ],
       ),
@@ -168,7 +237,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildSettingsTile(
             icon: Icons.storage,
             title: "Storage Mode",
-            trailingText: "Local Only",
+            trailingText: _storageMode,
             iconBgColor: _primaryMuted,
             iconColor: Colors.white,
           ),
@@ -252,26 +321,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildAccountActions() {
     return Column(
       children: [
-        _buildActionButton(
-          label: "Clear Local Data",
-          icon: Icons.delete_outline,
-          textColor: const Color(0xFFE53935), // Vibrant Red
-          bgColor: Colors.white,
+        GestureDetector(
+          onTap: _clearLocalData,
+          child: _buildActionButton(
+            label: "Clear Local Data",
+            icon: Icons.delete_outline,
+            textColor: const Color(0xFFE53935),
+            bgColor: Colors.white,
+          ),
         ),
         const SizedBox(height: 12),
-        _buildActionButton(
-          label: "Reset Onboarding",
-          icon: Icons.autorenew,
-          textColor: _primaryDark,
-          bgColor: Colors.white,
+        GestureDetector(
+          onTap: _resetOnboarding,
+          child: _buildActionButton(
+            label: "Reset Onboarding",
+            icon: Icons.autorenew,
+            textColor: _primaryDark,
+            bgColor: Colors.white,
+          ),
         ),
         const SizedBox(height: 12),
-        _buildActionButton(
-          label: "Logout",
-          icon: Icons.logout,
-          textColor: Colors.white,
-          bgColor: _primaryMuted,
-          isSolid: true,
+        GestureDetector(
+          onTap: _logout,
+          child: _buildActionButton(
+            label: "Logout",
+            icon: Icons.logout,
+            textColor: Colors.white,
+            bgColor: _primaryMuted,
+            isSolid: true,
+          ),
         ),
       ],
     );
